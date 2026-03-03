@@ -346,53 +346,47 @@ EXTRACT_FS_LEAGUE_ID_JS = r"""() => {
 EXTRACT_ARCHIVE_JS = r"""(selectors) => {
     const s = selectors;
     const seasons = [];
-    const links = document.querySelectorAll(s.archive_links);
     const seen = new Set();
-    for (const a of links) {
-        const href = a.getAttribute('href') || '';
-        const match = href.match(/\/football\/([^/]+)\/([^/]+-(\d{4})-(\d{4}))\/?/);
-        if (match && !seen.has(match[2])) {
-            seen.add(match[2]);
-            seasons.push({
-                slug: match[2],
-                country: match[1],
-                start_year: parseInt(match[3]),
-                end_year: parseInt(match[4]),
-                url: href.startsWith('http') ? href : 'https://www.flashscore.com' + href
-            });
-        }
-        const calMatch = href.match(/\/football\/([^/]+)\/([^/]+-(\d{4}))\/?$/);
-        if (calMatch && !seen.has(calMatch[2])) {
-            seen.add(calMatch[2]);
-            seasons.push({
-                slug: calMatch[2],
-                country: calMatch[1],
-                start_year: parseInt(calMatch[3]),
-                end_year: parseInt(calMatch[3]),
-                url: href.startsWith('http') ? href : 'https://www.flashscore.com' + href
-            });
-        }
-    }
-    const tableLinks = document.querySelectorAll(s.archive_table_links);
-    for (const a of tableLinks) {
-        const href = a.getAttribute('href') || '';
-        const m = href.match(/\/football\/([^/]+)\/([^/]+-(\d{4})-(\d{4}))\/?/);
-        if (m && !seen.has(m[2])) {
-            seen.add(m[2]);
-            seasons.push({
-                slug: m[2], country: m[1],
-                start_year: parseInt(m[3]), end_year: parseInt(m[4]),
-                url: href.startsWith('http') ? href : 'https://www.flashscore.com' + href
-            });
-        }
-        const cm = href.match(/\/football\/([^/]+)\/([^/]+-(\d{4}))\/?$/);
-        if (cm && !seen.has(cm[2])) {
-            seen.add(cm[2]);
-            seasons.push({
-                slug: cm[2], country: cm[1],
-                start_year: parseInt(cm[3]), end_year: parseInt(cm[3]),
-                url: href.startsWith('http') ? href : 'https://www.flashscore.com' + href
-            });
+    
+    // Strategy: scan ALL links on the archive page for season URL patterns
+    // Selectors from knowledge.json are tried first, then fallback to all <a> tags
+    const selectorSources = [
+        s.archive_links,
+        s.archive_table_links,
+        'a[href*="/football/"]',  // Broadest possible catch-all
+    ];
+    
+    for (const sel of selectorSources) {
+        if (!sel) continue;
+        const links = document.querySelectorAll(sel);
+        for (const a of links) {
+            const href = a.getAttribute('href') || '';
+            
+            // Match split season: e.g. premier-league-2023-2024
+            const match = href.match(/\/football\/([^/]+)\/([^/]+-(\d{4})-(\d{4}))\/?/);
+            if (match && !seen.has(match[2])) {
+                seen.add(match[2]);
+                seasons.push({
+                    slug: match[2],
+                    country: match[1],
+                    start_year: parseInt(match[3]),
+                    end_year: parseInt(match[4]),
+                    url: href.startsWith('http') ? href : 'https://www.flashscore.com' + href
+                });
+            }
+            
+            // Match calendar year: e.g. ligue-1-2024
+            const calMatch = href.match(/\/football\/([^/]+)\/([^/]+-(\d{4}))\/?$/);
+            if (calMatch && !seen.has(calMatch[2])) {
+                seen.add(calMatch[2]);
+                seasons.push({
+                    slug: calMatch[2],
+                    country: calMatch[1],
+                    start_year: parseInt(calMatch[3]),
+                    end_year: parseInt(calMatch[3]),
+                    url: href.startsWith('http') ? href : 'https://www.flashscore.com' + href
+                });
+            }
         }
     }
     seasons.sort((a, b) => b.start_year - a.start_year);
@@ -709,31 +703,60 @@ async def enrich_single_league(context, league: Dict[str, Any], conn,
         # Retrieve all selectors once for this context
         selectors = selector_mgr.get_all_selectors_for_context(CONTEXT_LEAGUE)
 
-        # ── BUG #4 fix: Extract region data from breadcrumbs ─────────────
-        # Breadcrumb order: [0]=FOOTBALL, [1]=COUNTRY (e.g. ALBANIA)
-        # Uses s.breadcrumb_links from knowledge.json
-        region_name = await page.evaluate("""(s) => {
+        # ── Extract region from URL (primary) + breadcrumb (fallback) ────
+        # URL pattern: /football/{country}/{league-slug}/ — always reliable
+        region_name = ""
+        region_url_href = ""
+        url_parts = url.rstrip('/').split('/')
+        # Find 'football' in URL parts, country is the next segment
+        try:
+            fb_idx = url_parts.index('football')
+            if fb_idx + 1 < len(url_parts):
+                country_slug = url_parts[fb_idx + 1]
+                region_name = country_slug.replace('-', ' ').title()  # e.g. "albania" -> "Albania"
+                region_url_href = f"https://www.flashscore.com/football/{country_slug}/"
+        except ValueError:
+            pass
+
+        # Fallback: try breadcrumb if URL parsing failed
+        if not region_name:
+            try:
+                await page.wait_for_selector(selectors.get('breadcrumb_links', '.breadcrumb__link'), timeout=5000)
+            except Exception:
+                pass  # Breadcrumbs may not load — URL is our primary source
+            region_name = await page.evaluate("""(s) => {
+                const links = document.querySelectorAll(s.breadcrumb_links);
+                if (links.length >= 2) return links[1].innerText.trim();
+                if (links.length >= 1) return links[0].innerText.trim();
+                return '';
+            }""", selectors)
+
+        # Try to upgrade region_name with breadcrumb text (proper casing/official name)
+        breadcrumb_region = await page.evaluate("""(s) => {
             const links = document.querySelectorAll(s.breadcrumb_links);
             if (links.length >= 2) return links[1].innerText.trim();
-            if (links.length >= 1) return links[0].innerText.trim();
             return '';
         }""", selectors)
+        if breadcrumb_region and breadcrumb_region.upper() != 'FOOTBALL':
+            region_name = breadcrumb_region  # Use official Flashscore name
+            
+        if not region_url_href:
+            region_url_href = await page.evaluate("""(s) => {
+                const links = document.querySelectorAll(s.breadcrumb_links);
+                const el = links.length >= 2 ? links[1] : links[0];
+                if (!el) return '';
+                const href = el.getAttribute('href') || '';
+                return href.startsWith('http') ? href : (href ? 'https://www.flashscore.com' + href : '');
+            }""", selectors)
 
+        # Region flag: Flashscore uses CSS sprite classes (e.g. fl_5), not <img> tags
+        # We still attempt extraction in case they switch to images in the future
         region_flag_url = await page.evaluate("""(s) => {
             const links = document.querySelectorAll(s.breadcrumb_links);
             const target = links.length >= 2 ? links[1] : links[0];
             if (!target) return '';
-            // Try region_flag_img selector first, then fallback to inline img
             const img = document.querySelector(s.region_flag_img) || target.querySelector('img');
             return img ? (img.src || img.getAttribute('data-src') || '') : '';
-        }""", selectors)
-
-        region_url_href = await page.evaluate("""(s) => {
-            const links = document.querySelectorAll(s.breadcrumb_links);
-            const el = links.length >= 2 ? links[1] : links[0];
-            if (!el) return '';
-            const href = el.getAttribute('href') || '';
-            return href.startsWith('http') ? href : (href ? 'https://www.flashscore.com' + href : '');
         }""", selectors)
 
         if region_name:
