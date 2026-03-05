@@ -396,7 +396,8 @@ class SyncManager:
             clean = {}
             for k, v in row.items():
                 # Skip internal SQLite columns not in Supabase
-                if k in ('id', 'rowid', 'hq_crest', 'processed'):
+                if k in ('id', 'rowid', 'hq_crest', 'processed',
+                         'country', 'home_team_name', 'away_team_name'):
                     continue
 
                 # Apply column renames

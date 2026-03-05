@@ -89,7 +89,7 @@ def check_seasons_ready(conn=None, min_seasons: int = 2) -> Tuple[bool, Dict]:
     # Count distinct seasons per league in fixtures
     rows = conn.execute("""
         SELECT league_id, COUNT(DISTINCT season) as season_count
-        FROM fixtures
+        FROM schedules
         WHERE season IS NOT NULL AND season != ''
         GROUP BY league_id
     """).fetchall()

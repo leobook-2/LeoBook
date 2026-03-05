@@ -142,7 +142,7 @@ def _propagate_status_updates(live_matches, resolved_matches, force_finished_ids
             updates['last_updated'] = now_iso
             set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
             vals = list(updates.values()) + [fid]
-            conn.execute(f"UPDATE fixtures SET {set_clause} WHERE fixture_id = ?", vals)
+            conn.execute(f"UPDATE schedules SET {set_clause} WHERE fixture_id = ?", vals)
             row.update(updates)
             sched_updates.append(dict(row))
 

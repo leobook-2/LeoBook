@@ -278,7 +278,7 @@ class RLTrainer:
 
         # Get all fixture dates in chronological order
         cursor = conn.execute("""
-            SELECT DISTINCT date FROM fixtures
+            SELECT DISTINCT date FROM schedules
             WHERE date IS NOT NULL
               AND home_score IS NOT NULL
               AND away_score IS NOT NULL
@@ -316,7 +316,7 @@ class RLTrainer:
                 SELECT fixture_id, league_id, home_team_id, home_team_name,
                        away_team_id, away_team_name, home_score, away_score,
                        season
-                FROM fixtures
+                FROM schedules
                 WHERE date = ? AND home_score IS NOT NULL AND away_score IS NOT NULL
             """, (match_date,))
             day_fixtures = cursor.fetchall()
@@ -421,7 +421,7 @@ class RLTrainer:
         """Get last 10 matches for a team before a given date."""
         cursor = conn.execute("""
             SELECT date, home_team_name, away_team_name, home_score, away_score
-            FROM fixtures
+            FROM schedules
             WHERE (home_team_id = ? OR away_team_id = ?)
               AND date < ?
               AND home_score IS NOT NULL
@@ -444,7 +444,7 @@ class RLTrainer:
         """Get H2H matches between two teams before a given date."""
         cursor = conn.execute("""
             SELECT date, home_team_name, away_team_name, home_score, away_score
-            FROM fixtures
+            FROM schedules
             WHERE ((home_team_id = ? AND away_team_id = ?)
                 OR (home_team_id = ? AND away_team_id = ?))
               AND date < ?

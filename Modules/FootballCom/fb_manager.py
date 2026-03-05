@@ -23,7 +23,7 @@ from Core.Intelligence.aigo_suite import AIGOSuite
 
 
 async def _create_session(playwright: Playwright):
-    """Shared session setup: launch browser, login, extract balance. Returns (context, page, balance)."""
+    """Full session setup: launch browser, login, extract balance. For bet placement."""
     user_data_dir = Path("Data/Auth/ChromeData_v3").absolute()
     user_data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -34,6 +34,27 @@ async def _create_session(playwright: Playwright):
     print(f"  [Balance] Current: {CURRENCY_SYMBOL}{current_balance:.2f}")
 
     return context, page, current_balance
+
+
+async def _create_session_no_login(playwright: Playwright):
+    """Lightweight session: launch browser, navigate to site. NO login, NO balance.
+    Used for URL resolution and odds extraction which are public pages."""
+    user_data_dir = Path("Data/Auth/ChromeData_v3").absolute()
+    user_data_dir.mkdir(parents=True, exist_ok=True)
+
+    context = await launch_browser_with_retry(playwright, user_data_dir)
+
+    if not context.pages:
+        page = await context.new_page()
+    else:
+        page = context.pages[0]
+
+    current_url = page.url
+    if "football.com" not in current_url or current_url == "about:blank":
+        await page.goto("https://www.football.com/ng", wait_until='domcontentloaded',
+                        timeout=30000)
+
+    return context, page
 
 
 @AIGOSuite.aigo_retry(max_retries=2, delay=5.0)
@@ -56,7 +77,7 @@ async def run_odds_harvesting(playwright: Playwright):
         context = None
         try:
             print(f"  [System] Launching Harvest Session (Restart {restarts}/{max_restarts})...")
-            context, page, _ = await _create_session(playwright)
+            context, page = await _create_session_no_login(playwright)
             log_state(chapter="Chapter 1C", action="Harvesting odds")
 
             for target_date, day_preds in sorted(predictions_by_date.items()):
