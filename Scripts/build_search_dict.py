@@ -462,7 +462,7 @@ async def main():
                 for a in item.get("abbreviations", []): search_terms.add(normalize_for_search(a))
                 
                 upsert_data = clean_none_values({
-                    "name": official_name,
+                    "name": official_name, # Standardized v7 column name
                     "other_names": item.get("other_names", []),
                     "abbreviations": item.get("abbreviations", []),
                     "search_terms": list(filter(None, search_terms)),
@@ -471,9 +471,9 @@ async def main():
                 updates[lid] = upsert_data
 
             if updates:
-                print(f"  [Supabase] Upserting {len(updates)} leagues...")
+                print(f"  [Supabase] Upserting {len(updates)} leagues to 'leagues'...")
                 batch_upsert("leagues", list(updates.values()))
-                update_db_under_lock(updates, "league_id", "league")
+                update_db_under_lock(updates, "league_id", "leagues")
             await asyncio.sleep(SLEEP_BETWEEN_BATCHES)
 
     # --- Process Teams ---
@@ -506,20 +506,20 @@ async def main():
                 
                 upsert_data = clean_none_values({
                     "team_id": tid,
-                    "team_name": off_name,
+                    "name": off_name, # Standardized v7
                     "other_names": item.get("other_names", []),
                     "abbreviations": item.get("abbreviations", []),
                     "search_terms": list(filter(None, search_terms)),
-                    "country": item.get("country"),
+                    "country_code": item.get("country_code") or item.get("country"), # Flex with v7
                     "city": item.get("city"),
                     "stadium": item.get("stadium"),
                 })
                 updates[tid] = upsert_data
 
             if updates:
-                print(f"  [Supabase] Upserting {len(updates)} teams...")
+                print(f"  [Supabase] Upserting {len(updates)} teams to 'teams'...")
                 batch_upsert("teams", list(updates.values()))
-                update_db_under_lock(updates, "team_id", "team")
+                update_db_under_lock(updates, "team_id", "teams") # SQLite table is 'teams'
             await asyncio.sleep(SLEEP_BETWEEN_BATCHES)
 
     print("\nSearch dictionary built and local CSVs/Supabase synced!")
@@ -598,11 +598,11 @@ async def enrich_match_search_dict(
 
                 upsert_data = clean_none_values({
                     "team_id": tid,
-                    "team_name": off_name,
+                    "name": off_name, # Standardized v7
                     "other_names": item.get("other_names", []),
                     "abbreviations": item.get("abbreviations", []),
                     "search_terms": list(filter(None, search_terms)),
-                    "country": item.get("country"),
+                    "country_code": item.get("country_code") or item.get("country"),
                     "city": item.get("city"),
                     "stadium": item.get("stadium"),
                 })
@@ -610,7 +610,7 @@ async def enrich_match_search_dict(
 
             if updates:
                 batch_upsert("teams", list(updates.values()))
-                update_db_under_lock(updates, "team_id", "team")
+                update_db_under_lock(updates, "team_id", "teams")
                 print(f"    [SearchDict] {len(updates)} teams enriched")
         except Exception as e:
             print(f"    [SearchDict] Team enrichment error (non-fatal): {e}")
@@ -631,7 +631,7 @@ async def enrich_match_search_dict(
 
                 upsert_data = clean_none_values({
                     "league_id": league_id,
-                    "name": official_name,
+                    "name": official_name, # Standardized v7 column name
                     "other_names": item.get("other_names", []),
                     "abbreviations": item.get("abbreviations", []),
                     "search_terms": list(filter(None, search_terms)),
@@ -640,7 +640,7 @@ async def enrich_match_search_dict(
 
             if updates:
                 batch_upsert("leagues", list(updates.values()))
-                update_db_under_lock(updates, "league_id", "league")
+                update_db_under_lock(updates, "league_id", "leagues")
                 print(f"    [SearchDict] League '{league_name}' enriched")
         except Exception as e:
             print(f"    [SearchDict] League enrichment error (non-fatal): {e}")
@@ -682,9 +682,12 @@ async def enrich_batch_teams_search_dict(team_pairs: list, batch_size: int = 10)
     # 2. Process in batches
     total_enriched = 0
     consecutive_failures = 0
+    
+    from Core.Intelligence.llm_health_manager import health_manager
+    await health_manager.ensure_initialized()
+
     for i in range(0, len(unenriched), batch_size):
         # Circuit-breaker: abort if no LLM providers are available
-        from Core.Intelligence.llm_health_manager import health_manager
         if not health_manager._gemini_active and not getattr(health_manager, '_grok_active', False):
             remaining = len(unenriched) - i
             print(f"    [SearchDict Batch] ⚠ No LLM providers available — skipping remaining {remaining} teams.")
@@ -728,11 +731,11 @@ async def enrich_batch_teams_search_dict(team_pairs: list, batch_size: int = 10)
 
                 upsert_data = clean_none_values({
                     "team_id": tid,
-                    "team_name": off_name,
+                    "name": off_name, # Standardized v7
                     "other_names": item.get("other_names", []),
                     "abbreviations": item.get("abbreviations", []),
                     "search_terms": list(filter(None, search_terms)),
-                    "country": item.get("country"),
+                    "country_code": item.get("country_code") or item.get("country"),
                     "city": item.get("city"),
                     "stadium": item.get("stadium"),
                 })
@@ -740,7 +743,7 @@ async def enrich_batch_teams_search_dict(team_pairs: list, batch_size: int = 10)
 
             if updates:
                 batch_upsert("teams", list(updates.values()))
-                update_db_under_lock(updates, "team_id", "team")
+                update_db_under_lock(updates, "team_id", "teams")
                 total_enriched += len(updates)
                 print(f"    [SearchDict Batch] ✓ Batch {i // batch_size + 1}: {len(updates)} teams enriched")
 

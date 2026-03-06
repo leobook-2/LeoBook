@@ -340,12 +340,12 @@ def save_region_league_entry(info: Dict[str, Any]):
 
     upsert_league(_get_conn(), {
         'league_id': league_id,
-        'name': league,
+        'name': info.get('league', info.get('name', league)), # Flexible name mapping
         'region': region,
         'region_flag': _standardize_url(info.get('region_flag', '')),
         'region_url': _standardize_url(info.get('region_url', '')),
-        'crest': _standardize_url(info.get('league_crest', '')),
-        'url': _standardize_url(info.get('league_url', '')),
+        'crest': _standardize_url(info.get('league_crest', info.get('crest', ''))), # Flexible crest mapping
+        'url': _standardize_url(info.get('league_url', info.get('url', ''))), # Flexible url mapping
         'date_updated': dt.now().isoformat(),
     })
 
@@ -373,10 +373,11 @@ def save_team_entry(team_info: Dict[str, Any]):
 
     upsert_team(conn, {
         'team_id': team_id,
-        'name': team_info.get('team_name', 'Unknown'),
+        'name': team_info.get('name', team_info.get('team_name', 'Unknown')), # Flexible name mapping
         'league_ids': [merged_league_ids] if merged_league_ids else [],
-        'crest': _standardize_url(team_info.get('team_crest', '')),
-        'url': _standardize_url(team_info.get('team_url', '')),
+        'crest': _standardize_url(team_info.get('team_crest', team_info.get('crest', ''))), # Flexible crest
+        'url': _standardize_url(team_info.get('team_url', team_info.get('url', ''))), # Flexible url
+        'country_code': team_info.get('country_code', team_info.get('country')), # Flex country
         'city': team_info.get('city'),
         'stadium': team_info.get('stadium'),
         'other_names': team_info.get('other_names'),
