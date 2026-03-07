@@ -46,6 +46,7 @@ playwright-state/
 *.sqlite3
 *.db-shm
 *.db-wal
+Auth/
 
 # Process locks
 *.lock
