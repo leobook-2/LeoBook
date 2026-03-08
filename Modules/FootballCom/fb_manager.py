@@ -12,6 +12,7 @@ Two exported functions with shared session setup.
 import asyncio
 import json
 import os
+import sqlite3
 from datetime import timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -174,6 +175,89 @@ async def _odds_worker(
                     pass
 
 
+# ── Concurrent league worker (semaphore-bounded) ───────────────────────
+
+async def _league_worker(
+    semaphore: asyncio.Semaphore,
+    browser_context,
+    league_id: str,
+    league_name: str,
+    fs_fixtures: List[Dict],
+    fb_url: str,
+    conn: sqlite3.Connection,
+    matcher,
+) -> List[Dict]:
+    """
+    Semaphore-bounded worker: one league → one page.
+    Opens fresh page, extracts all matches, fuzzy-matches
+    against fs_fixtures, saves each resolved match to SQLite
+    immediately, closes page.
+    Returns list of resolved match_row dicts.
+    """
+    async with semaphore:
+        page = None
+        resolved: List[Dict] = []
+        try:
+            page = await browser_context.new_page()
+            await page.set_viewport_size({"width": 500, "height": 640})
+
+            print(f"\n  [League] {league_name} ({len(fs_fixtures)} fixtures) → {fb_url}")
+
+            first_date = fs_fixtures[0].get('date', '') if fs_fixtures else ''
+            all_page_matches = await extract_league_matches(
+                page,
+                first_date,
+                target_league_name=league_name,
+                fb_url=fb_url,
+                expected_count=len(fs_fixtures),
+            )
+
+            if not all_page_matches:
+                print(f"  [League] {league_name}: no matches on page")
+                return []
+
+            all_page_matches = await validate_match_data(all_page_matches)
+
+            for fs_fix in fs_fixtures:
+                home = (fs_fix.get('home_team_name') or '').strip()
+                away = (fs_fix.get('away_team_name') or '').strip()
+                fix_date = fs_fix.get('date', '')
+
+                if not home or not away:
+                    continue
+
+                candidates = [
+                    m for m in all_page_matches
+                    if not fix_date or m.get('date', '') == fix_date
+                ] or all_page_matches
+
+                match_row = resolve_fixture_to_fb_match(
+                    fs_fix, candidates, league_id, matcher
+                )
+
+                if match_row:
+                    save_site_matches([match_row])  # immediate SQLite save
+                    resolved.append(match_row)
+                    print(
+                        f"    [Match] + {home} vs {away} "
+                        f"→ {match_row.get('url', '?')[:60]}"
+                    )
+                else:
+                    print(f"    [Match] x {home} vs {away} (no fb match)")
+
+            return resolved
+
+        except Exception as e:
+            print(f"  [League] ERROR {league_name}: {e}")
+            return []
+        finally:
+            if page:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+
+
 # ── CHAPTER 1 PAGE 1 — Odds Harvesting ─────────────────────────────────
 
 @AIGOSuite.aigo_retry(max_retries=2, delay=5.0)
@@ -249,97 +333,57 @@ async def run_odds_harvesting(playwright: Playwright):
         context = None
         try:
             print(f"  [System] Launching Harvest Session (Restart {restarts}/{max_restarts})...")
-            context, page = await _create_session_no_login(playwright)
+            context, _ = await _create_session_no_login(playwright)
             log_state(chapter="Ch1 P1", action="Direct fb_url odds extraction v9")
 
             from playwright.async_api import Error as PlaywrightError
 
             resolved_matches: List[Dict] = []
-            current_page = page
             resolved_count = 0
             unresolved_count = 0
 
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 5. Per-league: ONE navigation, extract ALL matches,
-            #    fuzzy-match each fixture (sync, no LLM)
+            # 5. Concurrent league harvesting (semaphore-bounded)
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            league_sem = asyncio.Semaphore(MAX_CONCURRENCY)
+            unmapped_count = 0
+
+            print(
+                f"  [Harvest] Processing {total_leagues} leagues "
+                f"with MAX_CONCURRENCY={MAX_CONCURRENCY}..."
+            )
+
+            league_tasks = []
             for league_id, fs_fixtures in leagues_to_extract.items():
                 league_entry = fb_lookup[league_id]
                 fb_url = league_entry['fb_url']
-                league_name = league_entry.get('fb_league_name', league_entry.get('name', league_id))
-
-                print(f"\n  [League] {league_name} ({len(fs_fixtures)} fixtures) -> {fb_url}")
-
-                try:
-                    # FIX 1: ONE navigation per league — no per-date loop
-                    # target_date is set to the first date (for stamping only,
-                    # not filtering — _extract_matches_from_container returns all cards)
-                    first_date = fs_fixtures[0].get('date', '') if fs_fixtures else ''
-                    all_page_matches = await extract_league_matches(
-                        current_page,
-                        first_date,
-                        target_league_name=league_name,
-                        fb_url=fb_url,
-                        expected_count=len(fs_fixtures),
+                lname = league_entry.get('fb_league_name', league_entry.get('name', league_id))
+                league_tasks.append(
+                    _league_worker(
+                        league_sem, context,
+                        league_id, lname,
+                        fs_fixtures, fb_url, conn, matcher,
                     )
+                )
 
-                    if not all_page_matches:
-                        print(f"    [League] {league_name}: no matches on page")
-                    else:
-                        all_page_matches = await validate_match_data(all_page_matches)
-                        save_site_matches(all_page_matches)
+            league_results = await asyncio.gather(
+                *league_tasks,
+                return_exceptions=True,
+            )
 
-                        # FIX 2: Fuzzy-match each fixture — sync, NO LLM
-                        for fs_fix in fs_fixtures:
-                            home = (fs_fix.get('home_team_name') or '').strip()
-                            away = (fs_fix.get('away_team_name') or '').strip()
-                            fixture_id = str(fs_fix.get('fixture_id', ''))
-                            fix_date = fs_fix.get('date', '')
+            for result in league_results:
+                if isinstance(result, list):
+                    resolved_matches.extend(result)
+                    resolved_count += len(result)
 
-                            if not home or not away:
-                                continue
+            unresolved_count = total_fixtures - resolved_count
 
-                            # Try date-filtered candidates first, fallback to all
-                            candidates = [
-                                m for m in all_page_matches
-                                if not fix_date or m.get('date', '') == fix_date
-                            ] or all_page_matches
-
-                            match_row = resolve_fixture_to_fb_match(
-                                fs_fix, candidates, league_id, matcher
-                            )
-
-                            if match_row:
-                                save_site_matches([match_row])
-                                resolved_matches.append(match_row)
-                                resolved_count += 1
-                                print(f"    [Match] + {home} vs {away} "
-                                      f"-> {match_row.get('url', '?')[:60]}")
-                            else:
-                                unresolved_count += 1
-                                print(f"    [Match] x {home} vs {away} (no fb match)")
-
-                    # Recycle page between leagues to release Chrome memory
-                    try:
-                        await current_page.close()
-                    except Exception:
-                        pass
-                    current_page = await _get_fresh_page(context)
-                    await asyncio.sleep(1.0)  # Inter-league breathe
-
-                except (PlaywrightError, Exception) as e:
-                    print(f"    [Error] League {league_name} failed: {e}")
-                    if "Target closed" in str(e) or "Target page, context or browser has been closed" in str(e):
-                        print("    [Recovery] Re-opening fresh page after crash...")
-                        current_page = await _get_fresh_page(context)
-                        await asyncio.sleep(2.0)
-                    continue
-
-            # Close the last page from the league loop
-            try:
-                await current_page.close()
-            except Exception:
-                pass
+            print(
+                f"  [Harvest] League phase complete: "
+                f"{resolved_count} fixtures resolved across "
+                f"{total_leagues} leagues "
+                f"({unmapped_count} unmapped/skipped)"
+            )
 
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             # 6. FIX 3: Concurrent odds extraction (semaphore-bounded)
