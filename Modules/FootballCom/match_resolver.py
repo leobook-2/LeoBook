@@ -53,8 +53,8 @@ class GrokMatcher:
         
         for m in fb_matches:
             # Guard candidate side (Requirement FIX 5)
-            candidate_home = (m.get('home_team') or '').strip().lower()
-            candidate_away = (m.get('away_team') or '').strip().lower()
+            candidate_home = (m.get('home_team_name') or '').strip().lower()
+            candidate_away = (m.get('away_team_name') or '').strip().lower()
             
             if not candidate_home or not candidate_away:
                 continue # Skip malformed candidates silently
@@ -77,7 +77,7 @@ class GrokMatcher:
         from Core.Intelligence.llm_health_manager import health_manager
         await health_manager.ensure_initialized()
 
-        candidates = [f"{m.get('home_team')} vs {m.get('away_team')}" for m in fb_matches]
+        candidates = [f"{m.get('home_team_name')} vs {m.get('away_team_name')}" for m in fb_matches]
         
         prompt_text = (
             f"I have a football match named: '{fs_name}'.\n"
