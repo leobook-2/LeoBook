@@ -414,40 +414,42 @@ _CSV_TABLE_MAP = {
 _COMPUTED_STANDINGS_SQL = """
     WITH match_results AS (
         SELECT
-            league_id,
-            home_team_id AS team_id,
-            home_team_name AS team_name,
-            season,
-            date,
-            CASE WHEN home_score > away_score THEN 3 WHEN home_score = away_score THEN 1 ELSE 0 END AS points,
-            CASE WHEN home_score > away_score THEN 1 ELSE 0 END AS wins,
-            CASE WHEN home_score = away_score THEN 1 ELSE 0 END AS draws,
-            CASE WHEN home_score < away_score THEN 1 ELSE 0 END AS losses,
-            home_score AS goals_for,
-            away_score AS goals_against
-        FROM schedules
-        WHERE match_status = 'finished'
-          AND home_score IS NOT NULL AND away_score IS NOT NULL
-          AND TYPEOF(home_score) != 'text' OR CAST(home_score AS INTEGER) = home_score
+            s.league_id,
+            s.home_team_id AS team_id,
+            COALESCE(s.home_team_name, h.name) AS team_name,
+            s.season,
+            s.date,
+            CASE WHEN s.home_score > s.away_score THEN 3 WHEN s.home_score = s.away_score THEN 1 ELSE 0 END AS points,
+            CASE WHEN s.home_score > s.away_score THEN 1 ELSE 0 END AS wins,
+            CASE WHEN s.home_score = s.away_score THEN 1 ELSE 0 END AS draws,
+            CASE WHEN s.home_score < s.away_score THEN 1 ELSE 0 END AS losses,
+            s.home_score AS goals_for,
+            s.away_score AS goals_against
+        FROM schedules s
+        LEFT JOIN teams h ON s.home_team_id = h.team_id
+        WHERE s.match_status = 'finished'
+          AND s.home_score IS NOT NULL AND s.away_score IS NOT NULL
+          AND (TYPEOF(s.home_score) != 'text' OR CAST(s.home_score AS INTEGER) = s.home_score)
 
         UNION ALL
 
         SELECT
-            league_id,
-            away_team_id AS team_id,
-            away_team_name AS team_name,
-            season,
-            date,
-            CASE WHEN away_score > home_score THEN 3 WHEN away_score = home_score THEN 1 ELSE 0 END,
-            CASE WHEN away_score > home_score THEN 1 ELSE 0 END,
-            CASE WHEN away_score = home_score THEN 1 ELSE 0 END,
-            CASE WHEN away_score < home_score THEN 1 ELSE 0 END,
-            away_score,
-            home_score
-        FROM schedules
-        WHERE match_status = 'finished'
-          AND home_score IS NOT NULL AND away_score IS NOT NULL
-          AND TYPEOF(home_score) != 'text' OR CAST(home_score AS INTEGER) = home_score
+            s.league_id,
+            s.away_team_id AS team_id,
+            COALESCE(s.away_team_name, a.name) AS team_name,
+            s.season,
+            s.date,
+            CASE WHEN s.away_score > s.home_score THEN 3 WHEN s.away_score = s.home_score THEN 1 ELSE 0 END,
+            CASE WHEN s.away_score > s.home_score THEN 1 ELSE 0 END,
+            CASE WHEN s.away_score = s.home_score THEN 1 ELSE 0 END,
+            CASE WHEN s.away_score < s.home_score THEN 1 ELSE 0 END,
+            s.away_score,
+            s.home_score
+        FROM schedules s
+        LEFT JOIN teams a ON s.away_team_id = a.team_id
+        WHERE s.match_status = 'finished'
+          AND s.home_score IS NOT NULL AND s.away_score IS NOT NULL
+          AND (TYPEOF(s.home_score) != 'text' OR CAST(s.home_score AS INTEGER) = s.home_score)
     )
     SELECT
         league_id, team_id, team_name, season,
@@ -996,6 +998,10 @@ def upsert_fixture(conn: sqlite3.Connection, data: Dict[str, Any]) -> int:
            ON CONFLICT(fixture_id) DO UPDATE SET
                date           = COALESCE(excluded.date, schedules.date),
                time           = COALESCE(excluded.time, schedules.time),
+               home_team_id   = COALESCE(excluded.home_team_id, schedules.home_team_id),
+               home_team_name = COALESCE(excluded.home_team_name, schedules.home_team_name),
+               away_team_id   = COALESCE(excluded.away_team_id, schedules.away_team_id),
+               away_team_name = COALESCE(excluded.away_team_name, schedules.away_team_name),
                home_score     = COALESCE(excluded.home_score, schedules.home_score),
                away_score     = COALESCE(excluded.away_score, schedules.away_score),
                extra          = COALESCE(excluded.extra, schedules.extra),
@@ -1063,7 +1069,9 @@ def bulk_upsert_fixtures(conn: sqlite3.Connection, fixtures: List[Dict[str, Any]
                time           = COALESCE(excluded.time, schedules.time),
                league_id      = COALESCE(excluded.league_id, schedules.league_id),
                home_team_id   = COALESCE(excluded.home_team_id, schedules.home_team_id),
+               home_team_name = COALESCE(excluded.home_team_name, schedules.home_team_name),
                away_team_id   = COALESCE(excluded.away_team_id, schedules.away_team_id),
+               away_team_name = COALESCE(excluded.away_team_name, schedules.away_team_name),
                home_score     = COALESCE(excluded.home_score, schedules.home_score),
                away_score     = COALESCE(excluded.away_score, schedules.away_score),
                extra          = COALESCE(excluded.extra, schedules.extra),

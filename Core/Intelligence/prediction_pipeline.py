@@ -81,10 +81,15 @@ def get_weekly_fixtures(conn=None, days: int = 7) -> List[Dict]:
 
     placeholders = ",".join(["?"] * len(date_strings))
     rows = conn.execute(
-        f"""SELECT * FROM schedules
-            WHERE date IN ({placeholders})
-              AND (match_status IS NULL OR match_status = 'scheduled' OR match_status = '')
-            ORDER BY date, time""",
+        f"""SELECT h.name AS home_team_name, 
+                   a.name AS away_team_name,
+                   s.*
+            FROM schedules s
+            LEFT JOIN teams h ON s.home_team_id = h.team_id
+            LEFT JOIN teams a ON s.away_team_id = a.team_id
+            WHERE s.date IN ({placeholders})
+              AND (s.match_status IS NULL OR s.match_status = 'scheduled' OR s.match_status = '')
+            ORDER BY s.date, s.time""",
         date_strings,
     ).fetchall()
 
