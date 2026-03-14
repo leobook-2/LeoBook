@@ -365,7 +365,9 @@ class _MatchCardState extends State<MatchCard> {
           ),
         ),
       ),
-    );
+    ),  // close MouseRegion
+  ),    // close Semantics
+);  // close LeoFadeIn
   }
 
   Widget _buildActiveLayout(BuildContext context, bool isDark) {
