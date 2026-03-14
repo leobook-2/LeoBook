@@ -1304,7 +1304,7 @@ async def main(
     elif gap_targets_by_id:
         mode_label = "targeted gap seasons only"
 
-    sync_interval    = max(1, total // 5)
+    sync_interval    = max(1, total // 20)   # sync every ~5% (was 20%)
     sync_checkpoints = set(range(sync_interval, total + 1, sync_interval))
 
     print(f"\n  [Enrich] {total} leagues ({scan_mode}, {mode_label}, concurrency={MAX_CONCURRENCY})")
