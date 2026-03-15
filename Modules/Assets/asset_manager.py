@@ -63,6 +63,9 @@ REGION_TO_ISO_OVERRIDES = {
     "BOTSWANA": "bw",
     "BURKINA FASO": "bf",
     "TURKEY": "tr",
+    "WAL": "gb-wls",           # Flashscore stores Wales country_code as 'wal'
+    "GB-WAL": "gb-wls",        # alternate form
+    "WALESNM": "gb-wls",       # any other variant stored in region column
 }
 
 def _build_region_to_iso_map() -> dict:
@@ -128,80 +131,164 @@ def ensure_bucket_exists(storage_client, bucket_name: str):
         logger.error(f"[x] Error ensuring bucket '{bucket_name}': {e}")
         return False
 
+
+def _slugify(name: str) -> str:
+    """Convert a name to a safe lowercase filename slug."""
+    import re
+    return re.sub(r'[^a-z0-9_]', '_', name.lower().strip())[:80]
+
+
+def _build_public_url(client, bucket: str, remote_name: str) -> Optional[str]:
+    """Construct the public Supabase Storage URL for an uploaded file."""
+    try:
+        result = client.storage.from_(bucket).get_public_url(remote_name)
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            return result.get("publicURL") or result.get("publicUrl")
+    except Exception as e:
+        logger.warning("[Assets] Could not build public URL for %s/%s: %s",
+                       bucket, remote_name, e)
+    return None
+
+
 def sync_team_assets(limit: Optional[int] = None):
-    """Syncs team crests to Supabase storage."""
+    """Sync team crests from SQLite teams table to Supabase storage.
+
+    Reads teams.crest from SQLite (set by the enricher after upload).
+    Only re-uploads crests that are local file paths (not yet on Supabase).
+    Skips teams whose crest is already a Supabase URL.
+    """
+    from Data.Access.league_db import get_connection
+
     client = get_supabase_client()
     if not client:
+        logger.warning("[Assets] No Supabase client — skipping team assets sync")
         return
 
-    df = pd.read_csv(TEAMS_CSV)
-    if limit:
-        df = df.head(limit)
-
     storage = client.storage
-    ensure_bucket_exists(storage, "teams")
+    ensure_bucket_exists(storage, "team-crests")
 
-    temp_dir = Path("temp_assets")
+    conn = get_connection()
+    query = """
+        SELECT team_id, name, crest
+        FROM teams
+        WHERE crest IS NOT NULL
+          AND crest != ''
+          AND crest NOT LIKE 'http%'
+    """
+    if limit:
+        query += f" LIMIT {limit}"
+
+    rows = conn.execute(query).fetchall()
+    logger.info(f"[Assets] Team crests to sync: {len(rows)}")
+
+    if not rows:
+        logger.info("[Assets] All team crests already on Supabase or none present.")
+        return
+
+    temp_dir = Path("temp_assets_teams")
     temp_dir.mkdir(exist_ok=True)
+    synced = 0
 
-    logger.info(f"[*] Starting team assets sync. Total teams: {len(df)}")
+    for row in rows:
+        team_id = row["team_id"] if hasattr(row, "keys") else row[0]
+        name    = row["name"]    if hasattr(row, "keys") else row[1]
+        crest   = row["crest"]   if hasattr(row, "keys") else row[2]
 
-    for _, row in df.iterrows():
-        team_id = row['team_id']
-        url = row['team_crest']
-
-        if team_id == "Unknown" or not url or url.lower() in ["unknown", "unknown url"]:
+        if not crest or not os.path.exists(crest):
             continue
 
-        filename = f"{team_id}.png"
-        local_path = temp_dir / filename
+        slug = _slugify(name or str(team_id))
+        remote_name = f"{slug}.png"
+        local_path  = Path(crest)
 
-        if download_image(url, local_path):
-            upload_to_supabase(storage, "teams", local_path, filename)
-            os.remove(local_path)
+        result = upload_to_supabase(storage, "team-crests", local_path, remote_name)
+        if result:
+            supabase_url = _build_public_url(client, "team-crests", remote_name)
+            if supabase_url:
+                conn.execute(
+                    "UPDATE teams SET crest = ? WHERE team_id = ?",
+                    (supabase_url, team_id)
+                )
+                synced += 1
+
+    conn.commit()
+    logger.info(f"[Assets] Team crests synced: {synced}/{len(rows)}")
 
     if temp_dir.exists():
         try:
             temp_dir.rmdir()
-        except:
+        except Exception:
             pass
 
 def sync_league_assets(limit: Optional[int] = None):
-    """Syncs league crests to Supabase storage."""
+    """Sync league crests from SQLite leagues table to Supabase storage.
+
+    Reads leagues.crest from SQLite. Only uploads crests that are local
+    file paths not yet on Supabase. Skips rows already with Supabase URLs.
+    """
+    from Data.Access.league_db import get_connection
+
     client = get_supabase_client()
     if not client:
+        logger.warning("[Assets] No Supabase client — skipping league assets sync")
         return
 
-    df = pd.read_csv(LEAGUES_CSV)
-    if limit:
-        df = df.head(limit)
-
     storage = client.storage
-    ensure_bucket_exists(storage, "leagues")
+    ensure_bucket_exists(storage, "league-crests")
+
+    conn = get_connection()
+    query = """
+        SELECT league_id, name, crest
+        FROM leagues
+        WHERE crest IS NOT NULL
+          AND crest != ''
+          AND crest NOT LIKE 'http%'
+    """
+    if limit:
+        query += f" LIMIT {limit}"
+
+    rows = conn.execute(query).fetchall()
+    logger.info(f"[Assets] League crests to sync: {len(rows)}")
+
+    if not rows:
+        logger.info("[Assets] All league crests already on Supabase or none present.")
+        return
 
     temp_dir = Path("temp_assets_leagues")
     temp_dir.mkdir(exist_ok=True)
+    synced = 0
 
-    logger.info(f"[*] Starting league assets sync. Total leagues: {len(df)}")
+    for row in rows:
+        league_id = row["league_id"] if hasattr(row, "keys") else row[0]
+        name      = row["name"]      if hasattr(row, "keys") else row[1]
+        crest     = row["crest"]     if hasattr(row, "keys") else row[2]
 
-    for _, row in df.iterrows():
-        league_id = row['league_id']
-        url = row['league_crest']
-
-        if league_id == "Unknown" or not url or url.lower() in ["unknown", "unknown url", "none"]:
+        if not crest or not os.path.exists(crest):
             continue
 
-        filename = f"{league_id}.png"
-        local_path = temp_dir / filename
+        slug = _slugify(name or str(league_id))
+        remote_name = f"{slug}.png"
+        local_path  = Path(crest)
 
-        if download_image(url, local_path):
-            upload_to_supabase(storage, "leagues", local_path, filename)
-            os.remove(local_path)
+        result = upload_to_supabase(storage, "league-crests", local_path, remote_name)
+        if result:
+            supabase_url = _build_public_url(client, "league-crests", remote_name)
+            if supabase_url:
+                conn.execute(
+                    "UPDATE leagues SET crest = ? WHERE league_id = ?",
+                    (supabase_url, league_id)
+                )
+                synced += 1
+
+    conn.commit()
+    logger.info(f"[Assets] League crests synced: {synced}/{len(rows)}")
 
     if temp_dir.exists():
         try:
             temp_dir.rmdir()
-        except:
+        except Exception:
             pass
 
 def sync_region_flags(limit: Optional[int] = None):
