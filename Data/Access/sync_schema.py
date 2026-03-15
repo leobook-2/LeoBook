@@ -161,7 +161,7 @@ SUPABASE_SCHEMA = {
             created_at TEXT NOT NULL,
             home_team TEXT NOT NULL,
             away_team TEXT NOT NULL,
-            league_id INTEGER,
+            league_id TEXT,
             match_date TEXT,
             market_key TEXT NOT NULL,
             market_name TEXT NOT NULL,
@@ -212,9 +212,10 @@ _COL_REMAP = {
 
 # ── Per-table batch sizes ─────────────────────────────────────────────────────
 _BATCH_SIZES: Dict[str, int] = {
-    'schedules':  500,
-    'match_odds': 1000,
-    'default':    2000,
+    'schedules':   500,
+    'match_odds':  1000,
+    'predictions': 200,   # 1969-row single upsert → Supabase 57014 timeout. Chunked at 200.
+    'default':     2000,
 }
 
 __all__ = [
