@@ -20,6 +20,7 @@ python-dotenv>=1.0.0
 
 # Async utilities
 asyncio-throttle>=1.0.2
+nest_asyncio>=1.6.0
 
 # Logging / monitoring (optional, used in some modules)
 colorlog>=6.8.0
