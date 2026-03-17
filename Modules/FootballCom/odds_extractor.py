@@ -329,6 +329,9 @@ class OddsExtractor:
 
             # ── Step 0: Extract match date + time from header ──
             try:
+                # ── Step 1: Dismiss intro dialog ──
+                await _dismiss_intro_dialog(self.page)
+
                 date_sel = _sel("match_detail_date") or ".estimate-start-time .date"
                 time_sel_hdr = _sel("match_detail_time_elapsed") or ".estimate-start-time .time"
 
@@ -347,8 +350,6 @@ class OddsExtractor:
             except Exception as dt_err:
                 print(f"    [Odds] {fixture_id}: date/time extraction skipped: {dt_err}")
 
-            # ── Step 1: Dismiss intro dialog ──
-            await _dismiss_intro_dialog(self.page)
 
             # ── Step 2: Recursive scroll to hydrate all market containers ──
             containers_found = await _recursive_scroll_markets(self.page)
