@@ -198,3 +198,6 @@ Data/Auth/
 
 
 .devcontainer/
+data-2026-03-16-18-45-03-batch-0000/conversations.json
+data-2026-03-16-18-45-03-batch-0000/projects.json
+data-2026-03-16-18-45-03-batch-0000/users.json
