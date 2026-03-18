@@ -183,18 +183,8 @@ def save_single_outcome(match_data: Dict, new_status: str):
         if new_status == 'reviewed' and target_id:
             _sync_outcome_to_site_registry(target_id, match_data)
 
-        # Paper trade outcome resolution
-        if new_status in ['reviewed', 'finished']:
-            try:
-                from Data.Access.db_helpers import update_paper_trade_outcome
-                h_s = match_data.get('home_score')
-                a_s = match_data.get('away_score')
-                if h_s is not None and a_s is not None:
-                    n_updated = update_paper_trade_outcome(conn, target_id, int(h_s), int(a_s))
-                    if n_updated:
-                        print(f"      [PaperTrade] Updated {n_updated} trades for fixture_id={target_id}")
-            except Exception as pt_e:
-                print(f"      [PaperTrade] Outcome update failed: {pt_e}")
+
+
 
     except Exception as e:
         print(f"    [Health] save_error (high): Failed to save outcome: {e}")

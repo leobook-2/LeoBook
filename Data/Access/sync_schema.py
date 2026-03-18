@@ -22,7 +22,6 @@ TABLE_CONFIG = {
     'live_scores':      {'local_table': 'live_scores',      'remote_table': 'live_scores',      'key': 'fixture_id'},
     'countries':        {'local_table': 'countries',        'remote_table': 'countries',        'key': 'code'},
     'match_odds':       {'local_table': 'match_odds',       'remote_table': 'match_odds',       'key': 'fixture_id,market_id,exact_outcome,line'},
-    'paper_trades':     {'local_table': 'paper_trades',     'remote_table': 'paper_trades',     'key': 'fixture_id,market_key'},
 }
 
 # ── Supabase auto-provisioning DDL ─────────────────────────────────────────
@@ -155,40 +154,6 @@ SUPABASE_SCHEMA = {
             extracted_at TEXT,
             last_updated TIMESTAMPTZ DEFAULT now(),
             PRIMARY KEY (fixture_id, market_id, exact_outcome, line)
-        );""",
-    'paper_trades': """
-        CREATE TABLE IF NOT EXISTS public.paper_trades (
-            id SERIAL PRIMARY KEY,
-            fixture_id TEXT NOT NULL,
-            trade_date TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            home_team TEXT NOT NULL,
-            away_team TEXT NOT NULL,
-            league_id TEXT,
-            match_date TEXT,
-            market_key TEXT NOT NULL,
-            market_name TEXT NOT NULL,
-            recommended_outcome TEXT NOT NULL,
-            live_odds REAL,
-            synthetic_odds REAL,
-            model_prob REAL NOT NULL,
-            ev REAL,
-            gated INTEGER NOT NULL,
-            stairway_step INTEGER,
-            simulated_stake REAL,
-            simulated_payout REAL,
-            home_score INTEGER,
-            away_score INTEGER,
-            outcome_correct INTEGER,
-            simulated_pl REAL,
-            reviewed_at TEXT,
-            rule_pick TEXT,
-            rl_pick TEXT,
-            ensemble_pick TEXT,
-            rl_confidence REAL,
-            rule_confidence REAL,
-            last_updated TIMESTAMPTZ DEFAULT now(),
-            UNIQUE(fixture_id, market_key)
         );""",
 }
 

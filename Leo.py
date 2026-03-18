@@ -48,10 +48,6 @@ def validate_config():
 # Validate configuration on startup
 validate_config()
 
-# ── Feature Flags (set True to disable for faster Ch1 runs) ──────────────
-DISABLE_PAPER_TRADES = True   # Skip paper-trade logging in prediction pipeline
-DISABLE_SEARCH_DICT  = True   # Skip SearchDict / team enrichment LLM calls
-
 # --- Modular Imports (all logic is external) ---
 from Core.System.lifecycle import (
     log_state, log_audit_state, setup_terminal_logging, parse_args, state
@@ -147,12 +143,9 @@ async def run_utility(args):
         print_accuracy_report()
 
     elif args.search_dict:
-        if DISABLE_SEARCH_DICT:
-            print("\n  [CH1] SearchDict enrichment disabled by flag (DISABLE_SEARCH_DICT=True)")
-        else:
-            print("\n  --- LEO: Rebuild Search Dictionary ---")
-            from Scripts.build_search_dict import main as build_search
-            await build_search()
+        print("\n  --- LEO: Rebuild Search Dictionary ---")
+        from Scripts.build_search_dict import main as build_search
+        await build_search()
 
     elif args.review:
         print("\n  --- LEO: Outcome Review ---")
@@ -319,46 +312,7 @@ async def run_utility(args):
         bt._write_report(args.bt_output)
         print(f"  [Backtest] Report written to {args.bt_output}")
 
-    elif args.paper_summary:
-        print("\n  --- LEO: Paper Trading Log Summary ---")
-        from Data.Access.db_helpers import get_paper_trading_summary
-        from Core.Utils.constants import now_ng
-        conn = init_db()
-        summary = get_paper_trading_summary(conn)
-        now_str = now_ng().strftime("%Y-%m-%d %H:%M WAT")
 
-        print(f"\n  {'═' * 50}")
-        print(f"  PAPER TRADING LOG SUMMARY")
-        print(f"  As of: {now_str}")
-        print(f"  {'═' * 50}")
-        print(f"\n  Total trades logged:    {summary['total_trades']}")
-        print(f"  Reviewed (settled):     {summary['reviewed_trades']}")
-        print(f"  Pending outcome:        {summary['pending_review']}")
-        print(f"\n  ACCURACY")
-        print(f"    All trades:           {summary['accuracy']:.1f}%")
-        print(f"    Gated trades only:    {summary['gated_accuracy']:.1f}%")
-        print(f"\n  SIMULATED P&L (NGN)")
-        print(f"    Total P&L:            ₦{summary['total_simulated_pl']:,.2f}")
-        print(f"    ROI:                  {summary['roi']:.1f}%")
-        print(f"    Avg stake:            ₦{summary['avg_stake']:,.0f}")
-
-        # Top 5 markets by count
-        sorted_markets = sorted(
-            summary.get('by_market', {}).items(),
-            key=lambda x: x[1]['count'], reverse=True
-        )[:5]
-        if sorted_markets:
-            print(f"\n  TOP 5 MARKETS (by trade count)")
-            print(f"    {'market_key':<18}| {'trades':>6} | {'accuracy':>8} | {'total_pl':>12}")
-            print(f"    {'─'*18}|{'─'*8}|{'─'*10}|{'─'*14}")
-            for mk, stats in sorted_markets:
-                print(f"    {mk:<18}| {stats['count']:>6} | {stats['accuracy']:>7.1f}% | ₦{stats['total_pl']:>10,.2f}")
-
-        print(f"\n  {'═' * 50}")
-        print(f"  ⚠ SIMULATED RESULTS. No real money was staked.")
-        print(f"  ⚠ P&L uses live odds where available, synthetic")
-        print(f"    odds as fallback. Treat as directional only.")
-        print(f"  {'═' * 50}")
 
     elif args.diagnose_rl:
         print("\n  --- LEO: RL Decision Inspector ---")
@@ -413,7 +367,7 @@ if __name__ == "__main__":
                       args.rule_engine, args.streamer,
                       args.assets,
                       args.logos, args.enrich_leagues, args.upgrade_crests,
-                      args.train_rl, args.backtest_rl, args.paper_summary,
+                      args.train_rl, args.backtest_rl,
                       args.diagnose_rl,
                       getattr(args, 'push_models', False),
                       getattr(args, 'pull_models', False)])

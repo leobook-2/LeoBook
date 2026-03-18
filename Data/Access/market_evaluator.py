@@ -1,7 +1,7 @@
 # market_evaluator.py: Unified market outcome evaluator for LeoBook.
 # Part of LeoBook Data — Access Layer
 # Pure function — no I/O, no DB access.
-# Imported by: db_helpers.py, outcome_reviewer.py, paper_trade_helpers.py
+# Imported by: db_helpers.py, outcome_reviewer.py
 
 import re
 from typing import Optional

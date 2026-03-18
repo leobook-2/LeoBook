@@ -182,13 +182,6 @@ Examples:
   python Leo.py --diagnose-rl --all-played --top 3   Last 3 completed matches
   python Leo.py --diagnose-rl --fixture FIXTURE_ID   Deep-dive on a specific match
   python Leo.py --diagnose-rl --checkpoint Data/Store/models/checkpoints/phase1_day038.pth
-
-FastAPI Backend (Hybrid — Option C):
-  python -m uvicorn api.main:app --reload                Start API server (dev)
-  python -m uvicorn api.main:app --host 0.0.0.0 --port 8000  Start API server (prod)
-  Swagger docs: http://localhost:8000/docs
-  Endpoints: /health, /predictions, /recommendations, /standings/{league}, /leagues, /ws/live
-  Note: Leo.py orchestration is independent — the API reads from the same Supabase tables.
         """
     )
     # --- Granular Chapter / Page Selection ---
@@ -286,9 +279,8 @@ FastAPI Backend (Hybrid — Option C):
                         metavar='PATH',
                         help='Path to write backtest report (default: Data/Log/backtest_report.txt)')
 
-    # --- Paper Trading ---
-    parser.add_argument('--paper-summary', action='store_true',
-                         help='Print paper trading log summary')
+
+
 
     # --- RL Diagnostics ---
     parser.add_argument('--diagnose-rl', action='store_true',

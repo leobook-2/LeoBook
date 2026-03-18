@@ -233,38 +233,8 @@ _SCHEMA_SQL = """
         UNIQUE(fixture_id, market_id, exact_outcome, line)
     );
 
-    CREATE TABLE IF NOT EXISTS paper_trades (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        fixture_id        TEXT NOT NULL,
-        trade_date        TEXT NOT NULL,
-        created_at        TEXT NOT NULL,
-        home_team         TEXT NOT NULL,
-        away_team         TEXT NOT NULL,
-        league_id         INTEGER,
-        match_date        TEXT,
-        market_key        TEXT NOT NULL,
-        market_name       TEXT NOT NULL,
-        recommended_outcome TEXT NOT NULL,
-        live_odds         REAL,
-        synthetic_odds    REAL,
-        model_prob        REAL NOT NULL,
-        ev                REAL,
-        gated             INTEGER NOT NULL,
-        stairway_step     INTEGER,
-        simulated_stake   REAL,
-        simulated_payout  REAL,
-        home_score        INTEGER,
-        away_score        INTEGER,
-        outcome_correct   INTEGER,
-        simulated_pl      REAL,
-        reviewed_at       TEXT,
-        rule_pick         TEXT,
-        rl_pick           TEXT,
-        ensemble_pick     TEXT,
-        rl_confidence     REAL,
-        rule_confidence   REAL,
-        UNIQUE(fixture_id, market_key)
-    );
+
+
 
     CREATE TABLE IF NOT EXISTS log_segments (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,

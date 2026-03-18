@@ -1,11 +1,7 @@
-// data_repository.dart: Data access through FastAPI backend.
+// data_repository.dart: data_repository.dart: Widget/screen for App — Repositories.
 // Part of LeoBook App — Repositories
 //
 // Classes: DataRepository
-//
-// MIGRATION: All Supabase direct calls replaced with FastAPI endpoints.
-// Auth: Supabase JWT token forwarded as Bearer header.
-// Realtime streams: kept on Supabase (Phase 2 → WebSocket).
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,7 +10,6 @@ import 'package:leobookapp/data/models/match_model.dart';
 import 'package:leobookapp/data/models/recommendation_model.dart';
 import 'package:leobookapp/data/models/standing_model.dart';
 import 'package:leobookapp/data/models/league_model.dart';
-import 'package:leobookapp/data/services/api_client.dart';
 import 'dart:convert';
 import 'dart:async';
 
@@ -22,43 +17,37 @@ class DataRepository {
   static const String _keyRecommended = 'cached_recommended';
   static const String _keyPredictions = 'cached_predictions';
 
-  final ApiClient _api = ApiClient();
-
-  // Keep Supabase client ONLY for realtime streams (Phase 2: migrate to WS)
   final SupabaseClient _supabase = Supabase.instance.client;
-
-  // ── Predictions (via FastAPI) ─────────────────────────────────
 
   Future<List<MatchModel>> fetchMatches({DateTime? date}) async {
     try {
-      final params = <String, String>{
-        'page': '1',
-        'page_size': '2000',
-      };
+      var query = _supabase.from('predictions').select();
+
       if (date != null) {
-        params['date'] =
+        final dateStr =
             "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+        query = query.eq('date', dateStr);
       }
 
-      final response = await _api.get('/predictions', queryParams: params);
-      final List<dynamic> data = response['data'] ?? [];
+      final response = await query.order('date', ascending: false).limit(2000);
 
-      debugPrint('Loaded ${data.length} predictions from FastAPI');
+      debugPrint('Loaded ${response.length} predictions from Supabase');
 
-      // Cache locally
+      // Cache data locally
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_keyPredictions, jsonEncode(data));
+      await prefs.setString(_keyPredictions, jsonEncode(response));
 
-      return data
+      return (response as List)
           .map((row) => MatchModel.fromCsv(row, row))
           .where((m) => m.prediction != null && m.prediction!.isNotEmpty)
           .toList();
     } catch (e) {
-      debugPrint("DataRepository Error (FastAPI): $e");
+      debugPrint("DataRepository Error (Supabase): $e");
 
       // Fallback to cache
       final prefs = await SharedPreferences.getInstance();
       final cachedString = prefs.getString(_keyPredictions);
+
       if (cachedString != null) {
         try {
           final List<dynamic> cachedData = jsonDecode(cachedString);
@@ -74,24 +63,65 @@ class DataRepository {
     }
   }
 
-  // ── Team Matches (via FastAPI /predictions) ───────────────────
-
   Future<List<MatchModel>> getTeamMatches(String teamName) async {
     try {
-      // FastAPI doesn't have a team-specific endpoint yet, so we fetch
-      // a large page and filter client-side (same data, no anon key)
-      final response = await _api.get('/predictions', queryParams: {
-        'page': '1',
-        'page_size': '200',
-      });
-      final List<dynamic> data = response['data'] ?? [];
+      // Fetch from predictions
+      final predResponse = await _supabase
+          .from('predictions')
+          .select()
+          .or('home_team.eq.$teamName,away_team.eq.$teamName')
+          .order('date', ascending: false)
+          .limit(40);
 
-      final matches = <MatchModel>[];
-      for (var row in data) {
-        final home = row['home_team']?.toString() ?? '';
-        final away = row['away_team']?.toString() ?? '';
-        if (home == teamName || away == teamName) {
-          matches.add(MatchModel.fromCsv(row, row));
+      // Fetch from schedules (where historical H2H data is stored)
+      final schedResponse = await _supabase
+          .from('schedules')
+          .select()
+          .or('home_team.eq.$teamName,away_team.eq.$teamName')
+          .order('date', ascending: false)
+          .limit(40);
+
+      final List<MatchModel> matches = [];
+      final Set<String> seenIds = {};
+
+      void addMatches(List<dynamic> rows, bool isPrediction) {
+        for (var row in rows) {
+          final m = isPrediction
+              ? MatchModel.fromCsv(row, row)
+              : MatchModel.fromCsv(row);
+
+          final id = m.fixtureId;
+          if (!seenIds.contains(id)) {
+            matches.add(m);
+            seenIds.add(id);
+          }
+        }
+      }
+
+      addMatches(predResponse as List, true);
+      addMatches(schedResponse as List, false);
+
+      // Enrich matches with crests if missing (schedules table doesn't have them)
+      if (matches.isNotEmpty) {
+        final crests = await fetchTeamCrests();
+        for (int i = 0; i < matches.length; i++) {
+          final m = matches[i];
+          final hCrest = crests[m.homeTeam] ?? m.homeCrestUrl;
+          final aCrest = crests[m.awayTeam] ?? m.awayCrestUrl;
+          if ((hCrest != null && hCrest != m.homeCrestUrl) ||
+              (aCrest != null && aCrest != m.awayCrestUrl)) {
+            matches[i] = m.mergeWith(MatchModel(
+              fixtureId: m.fixtureId,
+              date: m.date,
+              time: m.time,
+              homeTeam: m.homeTeam,
+              awayTeam: m.awayTeam,
+              status: m.status,
+              sport: m.sport,
+              homeCrestUrl: hCrest ?? m.homeCrestUrl,
+              awayCrestUrl: aCrest ?? m.awayCrestUrl,
+            ));
+          }
         }
       }
 
@@ -111,26 +141,24 @@ class DataRepository {
     }
   }
 
-  // ── Recommendations (via FastAPI — safety-gated) ──────────────
-
   Future<List<RecommendationModel>> fetchRecommendations() async {
     final prefs = await SharedPreferences.getInstance();
     try {
-      final response = await _api.get('/recommendations', queryParams: {
-        'limit': '50',
-      });
-      final List<dynamic> data = response['data'] ?? [];
+      final response = await _supabase
+          .from('predictions')
+          .select()
+          .gt('recommendation_score', 0)
+          .order('recommendation_score', ascending: false);
 
-      debugPrint(
-          'Loaded ${data.length} recommendations from FastAPI '
-          '(${response['passed_safety']} passed safety gate, '
-          '${response['rejected_safety']} rejected)');
+      debugPrint('Loaded ${response.length} recommendations from Supabase');
 
-      await prefs.setString(_keyRecommended, jsonEncode(data));
+      await prefs.setString(_keyRecommended, jsonEncode(response));
 
-      return data.map((json) => RecommendationModel.fromJson(json)).toList();
+      return (response as List)
+          .map((json) => RecommendationModel.fromJson(json))
+          .toList();
     } catch (e) {
-      debugPrint("Error fetching recommendations (FastAPI): $e");
+      debugPrint("Error fetching recommendations (Supabase): $e");
       final cached = prefs.getString(_keyRecommended);
       if (cached != null) {
         try {
@@ -146,43 +174,85 @@ class DataRepository {
     }
   }
 
-  // ── Standings (via FastAPI) ───────────────────────────────────
-
   Future<List<StandingModel>> getStandings(String leagueName) async {
     try {
-      final response = await _api.get('/standings/$leagueName');
-      final List<dynamic> data = response['data'] ?? [];
+      // Try exact match first
+      var response = await _supabase
+          .from('standings')
+          .select()
+          .eq('region_league', leagueName)
+          .order('position', ascending: true);
 
-      return data.map((row) => StandingModel.fromJson(row)).toList();
+      // Fallback: ILIKE if exact match returns empty (handles format variations)
+      if ((response as List).isEmpty && leagueName.isNotEmpty) {
+        response = await _supabase
+            .from('standings')
+            .select()
+            .ilike('region_league', '%$leagueName%')
+            .order('position', ascending: true);
+      }
+
+      // Enrich standings with team crests from teams table
+      final standings =
+          (response as List).map((row) => StandingModel.fromJson(row)).toList();
+
+      if (standings.isNotEmpty) {
+        try {
+          final teamNames = standings.map((s) => s.teamName).toList();
+          final teamsResponse = await _supabase
+              .from('teams')
+              .select('name, crest')
+              .inFilter('name', teamNames);
+          final Map<String, String> crestMap = {};
+          for (var row in (teamsResponse as List)) {
+            final name = row['name']?.toString();
+            final crest = row['crest']?.toString();
+            if (name != null &&
+                crest != null &&
+                crest.isNotEmpty &&
+                crest != 'Unknown') {
+              crestMap[name] = crest;
+            }
+          }
+          // Merge crests into standings
+          for (int i = 0; i < standings.length; i++) {
+            final crest = crestMap[standings[i].teamName];
+            if (crest != null && standings[i].teamCrestUrl == null) {
+              standings[i] = StandingModel(
+                teamName: standings[i].teamName,
+                teamId: standings[i].teamId,
+                teamCrestUrl: crest,
+                position: standings[i].position,
+                played: standings[i].played,
+                wins: standings[i].wins,
+                draws: standings[i].draws,
+                losses: standings[i].losses,
+                goalsFor: standings[i].goalsFor,
+                goalsAgainst: standings[i].goalsAgainst,
+                points: standings[i].points,
+                leagueName: standings[i].leagueName,
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint("Could not fetch team crests for standings: $e");
+        }
+      }
+
+      return standings;
     } catch (e) {
       debugPrint("DataRepository Error (Standings): $e");
       return [];
     }
   }
 
-  // ── Team Crests (via FastAPI /predictions — extracted from data) ──
-
   Future<Map<String, String>> fetchTeamCrests() async {
-    // Crests are now embedded in standings/predictions responses
-    // For a dedicated crests endpoint, this would be /teams — future addition
-    // For now, return empty and rely on data already in MatchModel
     try {
-      final response = await _api.get('/predictions', queryParams: {
-        'page': '1',
-        'page_size': '200',
-      });
-      final List<dynamic> data = response['data'] ?? [];
+      final response = await _supabase.from('teams').select('name, crest');
       final Map<String, String> crests = {};
-      for (var row in data) {
-        final home = row['home_team']?.toString();
-        final homeCrest = row['home_team_crest']?.toString();
-        final away = row['away_team']?.toString();
-        final awayCrest = row['away_team_crest']?.toString();
-        if (home != null && homeCrest != null && homeCrest.isNotEmpty) {
-          crests[home] = homeCrest;
-        }
-        if (away != null && awayCrest != null && awayCrest.isNotEmpty) {
-          crests[away] = awayCrest;
+      for (var row in (response as List)) {
+        if (row['name'] != null && row['crest'] != null) {
+          crests[row['name'].toString()] = row['crest'].toString();
         }
       }
       return crests;
@@ -192,46 +262,45 @@ class DataRepository {
     }
   }
 
-  // ── Schedules (via FastAPI /predictions) ──────────────────────
-
   Future<List<MatchModel>> fetchAllSchedules({DateTime? date}) async {
     try {
-      final params = <String, String>{
-        'page': '1',
-        'page_size': '2000',
-      };
+      // Schedules are stored in the fixtures table (not a separate table)
+      var query = _supabase.from('schedules').select();
+
       if (date != null) {
-        params['date'] =
+        final dateStr =
             "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+        query = query.eq('date', dateStr);
       }
 
-      final response = await _api.get('/predictions', queryParams: params);
-      final List<dynamic> data = response['data'] ?? [];
+      final response = await query.order('date', ascending: false).limit(5000);
 
-      return data.map((row) => MatchModel.fromCsv(row)).toList();
+      return (response as List).map((row) => MatchModel.fromCsv(row)).toList();
     } catch (e) {
-      debugPrint("DataRepository Error (Schedules): $e");
+      debugPrint("DataRepository Error (Fixtures/Schedules): $e");
       return [];
     }
   }
 
-  // ── Team Standing (single) ───────────────────────────────────
-
   Future<StandingModel?> getTeamStanding(String teamName) async {
     try {
-      // Fetch from standings and find the team
-      // This uses a broad standings call since we don't know the league
-      // Future: add /standings/team/{name} endpoint
-      return null; // Will be resolved when team's league is known
+      final response = await _supabase
+          .from('standings')
+          .select()
+          .eq('team_name', teamName)
+          .maybeSingle();
+
+      if (response != null) {
+        return StandingModel.fromJson(response);
+      }
+      return null;
     } catch (e) {
       debugPrint("DataRepository Error (Team Standing): $e");
       return null;
     }
   }
 
-  // ── Realtime Streams (KEPT on Supabase — Phase 2 migration) ──
-  // These stay as Supabase direct calls for now.
-  // Phase 2: migrate to FastAPI WebSocket /ws/live
+  // --- Realtime Streams (Postgres Changes Style) ---
 
   Stream<List<MatchModel>> watchLiveScores() {
     return _supabase.from('live_scores').stream(primaryKey: ['fixture_id']).map(
@@ -254,6 +323,7 @@ class DataRepository {
   }
 
   Stream<List<MatchModel>> watchSchedules({DateTime? date}) {
+    // Schedules are stored in the fixtures table
     var query = _supabase.from('schedules').stream(primaryKey: ['fixture_id']);
 
     return query.map((rows) {
@@ -287,14 +357,19 @@ class DataRepository {
     });
   }
 
-  // ── Leagues (via FastAPI) ─────────────────────────────────────
+  // --- League Data ---
 
   Future<List<LeagueModel>> fetchLeagues() async {
     try {
-      final response = await _api.get('/leagues');
-      final List<dynamic> data = response['data'] ?? [];
+      final response = await _supabase
+          .from('leagues')
+          .select(
+              'league_id, fs_league_id, name, crest, continent, region, region_flag, current_season, country_code, url')
+          .order('name', ascending: true);
 
-      return data.map((row) => LeagueModel.fromJson(row)).toList();
+      return (response as List)
+          .map((row) => LeagueModel.fromJson(row))
+          .toList();
     } catch (e) {
       debugPrint("DataRepository Error (Leagues): $e");
       return [];
@@ -303,12 +378,16 @@ class DataRepository {
 
   Future<LeagueModel?> fetchLeagueById(String leagueId) async {
     try {
-      // Fetch all leagues and filter — FastAPI MVP doesn't have /leagues/{id} yet
-      final leagues = await fetchLeagues();
-      return leagues.cast<LeagueModel?>().firstWhere(
-            (l) => l?.leagueId == leagueId,
-            orElse: () => null,
-          );
+      final response = await _supabase
+          .from('leagues')
+          .select()
+          .eq('league_id', leagueId)
+          .maybeSingle();
+
+      if (response != null) {
+        return LeagueModel.fromJson(response);
+      }
+      return null;
     } catch (e) {
       debugPrint("DataRepository Error (League by ID): $e");
       return null;
@@ -318,17 +397,16 @@ class DataRepository {
   Future<List<MatchModel>> fetchFixturesByLeague(String leagueId,
       {String? season}) async {
     try {
-      // Use predictions endpoint filtered client-side by league
-      final response = await _api.get('/predictions', queryParams: {
-        'page': '1',
-        'page_size': '500',
-      });
-      final List<dynamic> data = response['data'] ?? [];
+      var query =
+          _supabase.from('schedules').select().eq('league_id', leagueId);
 
-      return data
-          .where((row) => row['league_id'] == leagueId)
-          .map((row) => MatchModel.fromCsv(row))
-          .toList();
+      if (season != null) {
+        query = query.eq('season', season);
+      }
+
+      final response = await query.order('date', ascending: false).limit(500);
+
+      return (response as List).map((row) => MatchModel.fromCsv(row)).toList();
     } catch (e) {
       debugPrint("DataRepository Error (Fixtures by League): $e");
       return [];

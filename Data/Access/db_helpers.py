@@ -720,13 +720,7 @@ def _write_csv(filepath: str, data: List[Dict], fieldnames: List[str]):
     """Legacy no-op: writes go through SQLite now."""
     pass
 
-# ─── Paper Trading ───
-# ─── Paper Trade Helpers (moved to paper_trade_helpers.py) ───
-from Data.Access.paper_trade_helpers import (  # noqa: re-export
-    save_paper_trade,
-    update_paper_trade_outcome,
-    get_paper_trading_summary,
-)
+
 
 
 def _append_to_csv(filepath: str, data_row: Dict, fieldnames: List[str]):

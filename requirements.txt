@@ -36,7 +36,3 @@ pytz
 psutil
 tqdm
 
-# FastAPI backend (Option C Hybrid)
-fastapi>=0.115.0
-uvicorn>=0.30.0
-python-jose[cryptography]>=3.3.0
