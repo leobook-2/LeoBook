@@ -100,12 +100,12 @@ def calculate_market_reliability(predictions):
             market_stats[market] = {'total': 0, 'correct': 0, 'recent_total': 0, 'recent_correct': 0}
             
         market_stats[market]['total'] += 1
-        if outcome == 'True':
+        if outcome in ('True', '1'):
             market_stats[market]['correct'] += 1
             
         if p_date >= seven_days_ago:
             market_stats[market]['recent_total'] += 1
-            if outcome == 'True':
+            if outcome in ('True', '1'):
                 market_stats[market]['recent_correct'] += 1
             
     reliability = {}
@@ -154,10 +154,15 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
             
             # Date Filtering
             if target_date:
-                if p_date_str != target_date: continue
+                # Accept both ISO and DD.MM.YYYY target_date
+                if p_date_str != target_date and p_dt.strftime("%d.%m.%Y") != target_date and p_dt.strftime("%Y-%m-%d") != target_date:
+                    continue
             elif not show_all_upcoming:
                 # Default: Today only, and in the future
-                if p_date_str != now.strftime("%d.%m.%Y"): continue
+                today_iso = now.strftime("%Y-%m-%d")
+                today_eu = now.strftime("%d.%m.%Y")
+                if p_date_str != today_iso and p_date_str != today_eu:
+                    continue
                 if p_dt <= now: continue
             else:
                 # All upcoming: anything in the future
