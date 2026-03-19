@@ -9,7 +9,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/data/models/match_model.dart';
 import 'package:leobookapp/data/repositories/data_repository.dart';
-import '../widgets/shared/main_top_bar.dart';
+
+import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
 import '../widgets/shared/match_card.dart';
 
 class TeamScreen extends StatefulWidget {
@@ -150,42 +151,32 @@ class _TeamScreenState extends State<TeamScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundDark,
-      body: Column(
-        children: [
-          MainTopBar(
-            currentIndex: -1,
-            onTabChanged: (_) {},
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : CustomScrollView(
-                    slivers: [
-                      _buildSliverAppBar(),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Column(
-                            children: [
-                              const SizedBox(height: 20),
-                              _buildStatsGrid(),
-                              const SizedBox(height: 30),
-                              _buildRecentForm(),
-                              const SizedBox(height: 30),
-                              if (_nextMatch != null)
-                                _buildNextMatch(_nextMatch!),
-                              const SizedBox(height: 30),
-                              _buildMatchList(),
-                              const SizedBox(height: 40),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+      body: _isLoading
+          ? const LeoLoadingIndicator()
+          : CustomScrollView(
+              slivers: [
+                _buildSliverAppBar(),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 20),
+                        _buildStatsGrid(),
+                        const SizedBox(height: 30),
+                        _buildRecentForm(),
+                        const SizedBox(height: 30),
+                        if (_nextMatch != null)
+                          _buildNextMatch(_nextMatch!),
+                        const SizedBox(height: 30),
+                        _buildMatchList(),
+                        const SizedBox(height: 40),
+                      ],
+                    ),
                   ),
-          ),
-        ],
-      ),
+                ),
+              ],
+            ),
     );
   }
 
@@ -336,12 +327,7 @@ class _TeamScreenState extends State<TeamScreen> {
         ),
         onPressed: () => Navigator.pop(context),
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.share, size: 20, color: AppColors.textGrey),
-          onPressed: () {},
-        ),
-      ],
+      actions: const [],
     );
   }
 

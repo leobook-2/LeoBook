@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/data/models/match_model.dart';
 import 'package:leobookapp/data/repositories/data_repository.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
+import 'package:leobookapp/core/widgets/leo_shimmer.dart';
 import '../match_card.dart';
 
 class LeagueFixturesTab extends StatefulWidget {
@@ -34,7 +35,7 @@ class _LeagueFixturesTabState extends State<LeagueFixturesTab> {
       future: _matchesFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const MatchListSkeleton();
         }
 
         if (snapshot.hasError) {

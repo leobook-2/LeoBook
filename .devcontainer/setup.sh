@@ -5,7 +5,7 @@ echo "=== LeoBook Codespace Auto-Setup (API 36) ==="
 
 # ---- 0. Install system dependencies ----
 echo "[0/8] Installing system dependencies..."
-apt-get update -qq && apt-get install -y -qq chromium-browser wget unzip > /dev/null 2>&1 || true
+sudo apt-get update -qq && sudo apt-get install -y -qq chromium wget unzip > /dev/null 2>&1 || true
 
 # ---- 1. Python Dependencies ----
 echo "[1/8] Installing Python dependencies..."
@@ -61,7 +61,7 @@ echo -e "\nd56f5187479451eabf01fb78af6dfcb131b33910" >> "$ANDROID_HOME/licenses/
 # Install platform and build tools
 if command -v sdkmanager &> /dev/null; then
     echo "  Installing platforms and build-tools..."
-    sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0" > /dev/null 2>&1 || true
+    sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" > /dev/null 2>&1 || true
     sdkmanager "emulator" > /dev/null 2>&1 || true
 fi
 

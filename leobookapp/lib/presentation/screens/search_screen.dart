@@ -15,7 +15,7 @@ import 'package:leobookapp/core/widgets/glass_container.dart';
 import 'package:leobookapp/data/repositories/data_repository.dart';
 import 'package:leobookapp/presentation/screens/team_screen.dart';
 import 'package:leobookapp/presentation/screens/league_screen.dart';
-import '../widgets/shared/main_top_bar.dart';
+import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
 import '../widgets/shared/match_card.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -51,17 +51,9 @@ class _SearchScreenState extends State<SearchScreen> {
     return Scaffold(
       backgroundColor:
           isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
-      body: Column(
-        children: [
-          MainTopBar(
-            currentIndex: -1,
-            onTabChanged: (_) {},
-          ),
-          Expanded(
-            child: SafeArea(
-              top: false, // MainTopBar already handles the top
-              child: Column(
-                children: [
+      body: SafeArea(
+        child: Column(
+          children: [
                   // ── Search Bar Header ──
                   Padding(
                     padding: EdgeInsets.symmetric(
@@ -170,13 +162,8 @@ class _SearchScreenState extends State<SearchScreen> {
                           return _buildResultsView(context, state);
                         } else if (state is SearchLoading) {
                           return Center(
-                            child: SizedBox(
-                              width: Responsive.sp(context, 20),
-                              height: Responsive.sp(context, 20),
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.primary,
-                              ),
+                            child: LeoLoadingIndicator(
+                              size: Responsive.sp(context, 20),
                             ),
                           );
                         }
@@ -187,9 +174,6 @@ class _SearchScreenState extends State<SearchScreen> {
                 ],
               ),
             ),
-          ),
-        ],
-      ),
     );
   }
 

@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:leobookapp/data/models/rule_config_model.dart';
 import 'package:leobookapp/data/services/leo_service.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
+import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
 import 'rule_editor_screen.dart';
 
 class BacktestDashboard extends StatefulWidget {
@@ -103,7 +104,7 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
       // Removed standard AppBar, using SliverAppBar below
 
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LeoLoadingIndicator(label: 'Running backtest...')
           : CustomScrollView(
               slivers: [
                 _buildSliverAppBar(isDesktop, isDark),

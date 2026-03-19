@@ -11,6 +11,7 @@ import 'package:leobookapp/data/models/recommendation_model.dart';
 import 'package:leobookapp/data/models/match_model.dart';
 import 'package:leobookapp/logic/cubit/home_cubit.dart';
 import '../widgets/shared/recommendation_card.dart';
+import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
 import 'match_details_screen.dart';
 
 /// Unified Top Predictions screen — lives inside MainScreen's IndexedStack.
@@ -56,7 +57,7 @@ class TopPredictionsScreen extends StatelessWidget {
     return BlocBuilder<HomeCubit, HomeState>(
       builder: (context, state) {
         if (state is! HomeLoaded) {
-          return const Center(child: CircularProgressIndicator());
+          return const LeoLoadingIndicator(label: 'Loading predictions...');
         }
 
         // Filter to all top recommendations (sorted by time)

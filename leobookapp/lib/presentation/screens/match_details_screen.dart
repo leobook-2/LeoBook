@@ -14,8 +14,9 @@ import 'package:leobookapp/data/repositories/data_repository.dart';
 import 'package:leobookapp/core/constants/responsive_constants.dart';
 import 'team_screen.dart';
 import 'league_screen.dart';
-import '../widgets/shared/main_top_bar.dart';
+
 import '../widgets/shared/match_card.dart';
+import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
 
 class MatchDetailsScreen extends StatefulWidget {
   final MatchModel match;
@@ -99,10 +100,6 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
       backgroundColor: AppColors.backgroundDark,
       body: Column(
         children: [
-          MainTopBar(
-            currentIndex: -1,
-            onTabChanged: (_) {},
-          ),
           Expanded(
             child: SingleChildScrollView(
               child: Column(
@@ -182,297 +179,194 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
   }
 
   Widget _buildStadiumHeader(BuildContext context) {
-    return SizedBox(
-      height: 320, // Increased height for better visibility
-      child: Stack(
-        fit: StackFit.expand,
+    return Container(
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 8,
+        bottom: 24,
+        left: 16,
+        right: 16,
+      ),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF0F172A),
+            Color(0xFF1E293B),
+            AppColors.backgroundDark,
+          ],
+          stops: [0.0, 0.6, 1.0],
+        ),
+      ),
+      child: Column(
         children: [
-          // Background (Split Colors for Home/Away feel)
-          Row(
-            children: [
-              Expanded(
-                child: Container(color: const Color(0xFF0F172A)),
-              ), // Slate 900
-              Expanded(
-                child: Container(color: const Color(0xFF1E293B)),
-              ), // Slate 800
-            ],
-          ),
-
-          // Gradient Overlay
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  AppColors.backgroundDark.withValues(alpha: 0.8),
-                  AppColors.backgroundDark,
-                ],
-                stops: const [0.0, 0.7, 1.0],
+          // Back button row
+          Align(
+            alignment: Alignment.centerLeft,
+            child: CircleAvatar(
+              backgroundColor: Colors.white10,
+              radius: 18,
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, size: 16, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+                padding: EdgeInsets.zero,
               ),
             ),
           ),
-
-          // Header Actions
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            left: 16,
-            right: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                CircleAvatar(
-                  backgroundColor: Colors.white10,
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new,
-                      size: 20,
-                      color: Colors.white,
-                    ),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => LeagueScreen(
-                          leagueId: match.league ?? "LEAGUE",
-                          leagueName: match.league ?? "LEAGUE",
-                        ),
+          const SizedBox(height: 16),
+          // Three-column layout: Home | Center | Away
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // HOME TEAM column
+              Expanded(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: Colors.white24),
                       ),
-                    );
-                  },
-                  child: Column(
-                    children: [
-                      Row(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: match.homeCrestUrl != null && match.homeCrestUrl!.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: match.homeCrestUrl!,
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.contain,
+                                errorWidget: (_, __, ___) => const Icon(Icons.shield, size: 36, color: Colors.white),
+                              )
+                            : const Icon(Icons.shield, size: 36, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      match.homeTeam,
+                      style: GoogleFonts.lexend(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              // CENTER column: league, date, VS
+              Expanded(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (context) => LeagueScreen(
+                            leagueId: match.league ?? '',
+                            leagueName: match.league ?? '',
+                          ),
+                        ));
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (match.leagueCrestUrl != null &&
-                              match.leagueCrestUrl!.isNotEmpty)
+                          if (match.leagueCrestUrl != null && match.leagueCrestUrl!.isNotEmpty)
                             Padding(
-                              padding: const EdgeInsets.only(right: 6),
+                              padding: const EdgeInsets.only(right: 4),
                               child: CachedNetworkImage(
                                 imageUrl: match.leagueCrestUrl!,
-                                width: 14,
-                                height: 14,
+                                width: 12,
+                                height: 12,
                                 fit: BoxFit.contain,
-                                errorWidget: (_, __, ___) =>
-                                    const SizedBox.shrink(),
+                                errorWidget: (_, __, ___) => const SizedBox.shrink(),
                               ),
                             ),
                           Flexible(
                             child: Text(
-                              _parseLeagueName(match.league ?? "LEAGUE"),
-                              style: GoogleFonts.lexend(
-                                color: AppColors.primary,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 2.0,
-                              ),
+                              _parseLeagueName(match.league ?? ''),
+                              style: GoogleFonts.lexend(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.5),
                               overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        "${match.date} | ${match.time}${match.displayStatus.isEmpty ? '' : ' | ${match.displayStatus}'}",
-                        style: GoogleFonts.lexend(
-                          color: Colors.white60,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                CircleAvatar(
-                  backgroundColor: Colors.white10,
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.share,
-                      size: 20,
-                      color: Colors.white,
                     ),
-                    onPressed: () {},
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Teams Display
-          Positioned(
-            top: 100,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Home Team
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => TeamScreen(
-                          teamName: match.homeTeam,
-                          repository: context.read<DataRepository>(),
-                        ),
-                      ),
-                    );
-                  },
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.white10,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(18),
-                          child: match.homeCrestUrl != null &&
-                                  match.homeCrestUrl!.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: match.homeCrestUrl!,
-                                  width: 50,
-                                  height: 50,
-                                  fit: BoxFit.contain,
-                                  errorWidget: (_, __, ___) => const Icon(
-                                    Icons.shield,
-                                    size: 40,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.shield,
-                                  size: 40,
-                                  color: Colors.white,
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        match.homeTeam,
-                        style: GoogleFonts.lexend(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-
-                // VS / Badge
-                Column(
-                  children: [
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 4),
                     Text(
-                      match.displayStatus == "FINISHED" || match.isLive
-                          ? "${match.homeScore} : ${match.awayScore}"
-                          : "VS",
+                      '${match.date} • ${match.time}',
+                      style: GoogleFonts.lexend(color: Colors.white60, fontSize: 10),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      match.displayStatus == 'FINISHED' || match.isLive
+                          ? '${match.homeScore} : ${match.awayScore}'
+                          : 'VS',
                       style: GoogleFonts.lexend(
-                        color: Colors.white24,
-                        fontSize: 32,
+                        color: match.isLive ? AppColors.liveRed : Colors.white24,
+                        fontSize: 28,
                         fontWeight: FontWeight.w900,
                         fontStyle: FontStyle.italic,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    if (match.displayStatus.isNotEmpty)
+                    if (match.displayStatus.isNotEmpty) ...[
+                      const SizedBox(height: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.2),
+                          color: AppColors.primary.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: AppColors.primary.withValues(alpha: 0.3),
-                          ),
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
                         ),
                         child: Text(
                           match.displayStatus,
-                          style: GoogleFonts.lexend(
-                            color: AppColors.primary,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: GoogleFonts.lexend(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.bold),
                         ),
-                      ),
-                  ],
-                ),
-
-                // Away Team
-                GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => TeamScreen(
-                          teamName: match.awayTeam,
-                          repository: context.read<DataRepository>(),
-                        ),
-                      ),
-                    );
-                  },
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.white10,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(18),
-                          child: match.awayCrestUrl != null &&
-                                  match.awayCrestUrl!.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: match.awayCrestUrl!,
-                                  width: 50,
-                                  height: 50,
-                                  fit: BoxFit.contain,
-                                  errorWidget: (_, __, ___) => const Icon(
-                                    Icons.shield,
-                                    size: 40,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.shield,
-                                  size: 40,
-                                  color: Colors.white,
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        match.awayTeam,
-                        style: GoogleFonts.lexend(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
                       ),
                     ],
-                  ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              // AWAY TEAM column
+              Expanded(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: match.awayCrestUrl != null && match.awayCrestUrl!.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: match.awayCrestUrl!,
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.contain,
+                                errorWidget: (_, __, ___) => const Icon(Icons.shield, size: 36, color: Colors.white),
+                              )
+                            : const Icon(Icons.shield, size: 36, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      match.awayTeam,
+                      style: GoogleFonts.lexend(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -823,7 +717,7 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
           border: Border.all(color: Colors.white10),
         ),
         child: const Center(
-          child: CircularProgressIndicator(strokeWidth: 2),
+          child: LeoLoadingIndicator(size: 24),
         ),
       );
     }

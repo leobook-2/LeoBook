@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
+import 'package:leobookapp/core/widgets/leo_shimmer.dart';
 import 'package:leobookapp/data/models/match_model.dart';
 import 'package:leobookapp/data/models/standing_model.dart';
 import 'package:leobookapp/data/repositories/data_repository.dart';
@@ -61,7 +62,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const ContentSkeleton();
     }
     final isDark = Theme.of(context).brightness == Brightness.dark;
 

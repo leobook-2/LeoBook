@@ -475,4 +475,25 @@ class DataRepository {
       return [];
     }
   }
+  Future<List<String>> fetchLeagueSeasons(String leagueId) async {
+    try {
+      // Fetch distinct seasons from schedules for this league
+      final response = await _supabase
+          .from('schedules')
+          .select('season')
+          .eq('league_id', leagueId)
+          .not('season', 'is', null)
+          .order('season', ascending: false);
+
+      final Set<String> seasons = {};
+      for (var row in (response as List)) {
+        final s = row['season']?.toString() ?? '';
+        if (s.isNotEmpty) seasons.add(s);
+      }
+      return seasons.toList()..sort((a, b) => b.compareTo(a));
+    } catch (e) {
+      debugPrint("DataRepository Error (League Seasons): $e");
+      return [];
+    }
+  }
 }

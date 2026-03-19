@@ -9,6 +9,7 @@ import 'package:leobookapp/core/constants/responsive_constants.dart';
 import 'package:leobookapp/core/widgets/glass_container.dart';
 import 'package:leobookapp/data/models/rule_config_model.dart';
 import 'package:leobookapp/data/services/leo_service.dart';
+import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
 import 'rule_editor_screen.dart';
 
 class RuleEngineListScreen extends StatefulWidget {
@@ -112,7 +113,7 @@ class _RuleEngineListScreenState extends State<RuleEngineListScreen> {
         backgroundColor: AppColors.successGreen,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LeoLoadingIndicator()
           : _engines.isEmpty
               ? const Center(child: Text('No engines found'))
               : RefreshIndicator(

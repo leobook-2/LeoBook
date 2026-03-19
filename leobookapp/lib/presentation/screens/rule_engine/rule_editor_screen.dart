@@ -9,6 +9,7 @@ import 'package:leobookapp/core/constants/responsive_constants.dart';
 import 'package:leobookapp/core/widgets/glass_container.dart';
 import 'package:leobookapp/data/models/rule_config_model.dart';
 import 'package:leobookapp/data/services/leo_service.dart';
+import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
 
 class RuleEditorScreen extends StatefulWidget {
   final RuleConfigModel? engine;
@@ -97,10 +98,8 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
         foregroundColor: Colors.white,
         icon: _isSaving
             ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
+                child: LeoLoadingIndicator(
+                  size: 16,
                   color: Colors.white,
                 ),
               )
