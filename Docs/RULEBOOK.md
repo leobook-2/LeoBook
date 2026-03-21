@@ -1,4 +1,4 @@
-# LeoBook Developer RuleBook v9.3
+# LeoBook Developer RuleBook v9.4
 
 > **This document is LAW.** Every developer and AI agent working on LeoBook MUST follow these rules without exception. Violations will break the system.
 
@@ -411,7 +411,7 @@ All six Tier 1 guardrails are **LIVE as of March 10, 2026**. None may be disable
 
 ---
 
-*Last updated: 2026-03-15 (v9.3 — §2.2 startup sync delta-first, §2.3 cache schema versioning, §2.4 SearchDict placement, §2.18 Streamer process management + batch resume + upsert batch sizes)*
+*Last updated: 2026-03-21 (v9.4 — Design system migration, recommendation filters, live countdown, football.com integration)*
 *Previous: v9.2 — §2.16 Reuse First, §2.17 Timezone WAT Standard*
 *Previous: v9.1 — Module Size Limit §2.14, Module Home Rule §2.15, P2 two-job gate, Season-Aware RL §2.13*
 *Authored by: LeoBook Engineering Team — Materialless LLC*

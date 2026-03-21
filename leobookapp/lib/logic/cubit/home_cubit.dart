@@ -38,6 +38,13 @@ class HomeLoaded extends HomeState {
   final List<String> selectedPredictionTypes;
   final double minOdds;
   final double maxOdds;
+  final double minReliability;
+  final List<String> selectedConfidenceLevels;
+  final bool onlyAvailable;
+
+  // Available Filter Options
+  final List<String> availableLeagues;
+  final List<String> availablePredictionTypes;
 
   HomeLoaded({
     required this.allMatches,
@@ -54,7 +61,12 @@ class HomeLoaded extends HomeState {
     this.selectedLeagues = const [],
     this.selectedPredictionTypes = const [],
     this.minOdds = 1.0,
-    this.maxOdds = 5.0,
+    this.maxOdds = 10.0,
+    this.minReliability = 0.0,
+    this.selectedConfidenceLevels = const [],
+    this.onlyAvailable = false,
+    this.availableLeagues = const [],
+    this.availablePredictionTypes = const [],
   });
 }
 
@@ -117,13 +129,22 @@ class HomeCubit extends Cubit<HomeState> {
           .toList();
 
       final sportsSet = {'ALL'};
+      final leaguesSet = <String>{};
+      final typesSet = <String>{};
+
       for (var m in matches) {
         sportsSet.add(m.sport.toUpperCase());
+        if (m.league != null) leaguesSet.add(m.league!);
+        if (m.prediction != null) typesSet.add(m.prediction!);
       }
       for (var r in recommendations) {
         sportsSet.add(r.sport.toUpperCase());
+        leaguesSet.add(r.league);
+        typesSet.add(r.prediction);
       }
       final availableSports = sportsSet.toList()..sort();
+      final availableLeagues = leaguesSet.toList()..sort();
+      final availablePredictionTypes = typesSet.toList()..sort();
 
       emit(
         HomeLoaded(
@@ -138,6 +159,8 @@ class HomeCubit extends Cubit<HomeState> {
           selectedSport: defaultSport,
           availableSports: availableSports,
           isAllMatchesExpanded: false,
+          availableLeagues: availableLeagues,
+          availablePredictionTypes: availablePredictionTypes,
         ),
       );
 
@@ -238,6 +261,9 @@ class HomeCubit extends Cubit<HomeState> {
         types: currentState.selectedPredictionTypes,
         minO: currentState.minOdds,
         maxO: currentState.maxOdds,
+        minRel: currentState.minReliability,
+        confs: currentState.selectedConfidenceLevels,
+        onlyAvail: currentState.onlyAvailable,
       );
 
       emit(HomeLoaded(
@@ -258,6 +284,11 @@ class HomeCubit extends Cubit<HomeState> {
         selectedPredictionTypes: currentState.selectedPredictionTypes,
         minOdds: currentState.minOdds,
         maxOdds: currentState.maxOdds,
+        minReliability: currentState.minReliability,
+        selectedConfidenceLevels: currentState.selectedConfidenceLevels,
+        onlyAvailable: currentState.onlyAvailable,
+        availableLeagues: currentState.availableLeagues,
+        availablePredictionTypes: currentState.availablePredictionTypes,
       ));
     } catch (e) {
       debugPrint('Periodic refresh error: $e');
@@ -294,6 +325,9 @@ class HomeCubit extends Cubit<HomeState> {
         types: currentState.selectedPredictionTypes,
         minO: currentState.minOdds,
         maxO: currentState.maxOdds,
+        minRel: currentState.minReliability,
+        confs: currentState.selectedConfidenceLevels,
+        onlyAvail: currentState.onlyAvailable,
       );
 
       final live = mergedMatches.where((m) => m.isLive).toList();
@@ -318,6 +352,11 @@ class HomeCubit extends Cubit<HomeState> {
           selectedPredictionTypes: currentState.selectedPredictionTypes,
           minOdds: currentState.minOdds,
           maxOdds: currentState.maxOdds,
+          minReliability: currentState.minReliability,
+          selectedConfidenceLevels: currentState.selectedConfidenceLevels,
+          onlyAvailable: currentState.onlyAvailable,
+          availableLeagues: currentState.availableLeagues,
+          availablePredictionTypes: currentState.availablePredictionTypes,
         ),
       );
     }
@@ -340,6 +379,9 @@ class HomeCubit extends Cubit<HomeState> {
         types: currentState.selectedPredictionTypes,
         minO: currentState.minOdds,
         maxO: currentState.maxOdds,
+        minRel: currentState.minReliability,
+        confs: currentState.selectedConfidenceLevels,
+        onlyAvail: currentState.onlyAvailable,
       );
 
       final filteredRecs = _filterRecommendations(
@@ -350,6 +392,9 @@ class HomeCubit extends Cubit<HomeState> {
         types: currentState.selectedPredictionTypes,
         minO: currentState.minOdds,
         maxO: currentState.maxOdds,
+        minRel: currentState.minReliability,
+        confs: currentState.selectedConfidenceLevels,
+        onlyAvail: currentState.onlyAvailable,
       );
 
       final featured = filteredMatches
@@ -357,13 +402,22 @@ class HomeCubit extends Cubit<HomeState> {
           .toList();
 
       final sportsSet = {'ALL'};
+      final leaguesSet = <String>{};
+      final typesSet = <String>{};
+
       for (var m in matches) {
         sportsSet.add(m.sport.toUpperCase());
+        if (m.league != null) leaguesSet.add(m.league!);
+        if (m.prediction != null) typesSet.add(m.prediction!);
       }
       for (var r in currentState.allRecommendations) {
         sportsSet.add(r.sport.toUpperCase());
+        leaguesSet.add(r.league);
+        typesSet.add(r.prediction);
       }
       final availableSports = sportsSet.toList()..sort();
+      final availableLeagues = leaguesSet.toList()..sort();
+      final availablePredictionTypes = typesSet.toList()..sort();
 
       emit(
         HomeLoaded(
@@ -382,6 +436,11 @@ class HomeCubit extends Cubit<HomeState> {
           selectedPredictionTypes: currentState.selectedPredictionTypes,
           minOdds: currentState.minOdds,
           maxOdds: currentState.maxOdds,
+          minReliability: currentState.minReliability,
+          selectedConfidenceLevels: currentState.selectedConfidenceLevels,
+          onlyAvailable: currentState.onlyAvailable,
+          availableLeagues: availableLeagues,
+          availablePredictionTypes: availablePredictionTypes,
         ),
       );
 
@@ -424,6 +483,9 @@ class HomeCubit extends Cubit<HomeState> {
         types: currentState.selectedPredictionTypes,
         minO: currentState.minOdds,
         maxO: currentState.maxOdds,
+        minRel: currentState.minReliability,
+        confs: currentState.selectedConfidenceLevels,
+        onlyAvail: currentState.onlyAvailable,
       );
       final filteredRecs = _filterRecommendations(
         currentState.allRecommendations,
@@ -433,6 +495,9 @@ class HomeCubit extends Cubit<HomeState> {
         types: currentState.selectedPredictionTypes,
         minO: currentState.minOdds,
         maxO: currentState.maxOdds,
+        minRel: currentState.minReliability,
+        confs: currentState.selectedConfidenceLevels,
+        onlyAvail: currentState.onlyAvailable,
       );
 
       final featured = filteredMatches
@@ -456,6 +521,11 @@ class HomeCubit extends Cubit<HomeState> {
           selectedPredictionTypes: currentState.selectedPredictionTypes,
           minOdds: currentState.minOdds,
           maxOdds: currentState.maxOdds,
+          minReliability: currentState.minReliability,
+          selectedConfidenceLevels: currentState.selectedConfidenceLevels,
+          onlyAvailable: currentState.onlyAvailable,
+          availableLeagues: currentState.availableLeagues,
+          availablePredictionTypes: currentState.availablePredictionTypes,
         ),
       );
     }
@@ -466,6 +536,9 @@ class HomeCubit extends Cubit<HomeState> {
     required List<String> types,
     required double minOdds,
     required double maxOdds,
+    required double minReliability,
+    required List<String> confidenceLevels,
+    required bool onlyAvailable,
   }) {
     if (state is HomeLoaded) {
       final currentState = state as HomeLoaded;
@@ -474,10 +547,11 @@ class HomeCubit extends Cubit<HomeState> {
         currentState.allMatches,
         currentState.selectedDate,
         currentState.selectedSport,
-        leagues: leagues,
-        types: types,
         minO: minOdds,
         maxO: maxOdds,
+        minRel: minReliability,
+        confs: confidenceLevels,
+        onlyAvail: onlyAvailable,
       );
       final filteredRecs = _filterRecommendations(
         currentState.allRecommendations,
@@ -487,6 +561,9 @@ class HomeCubit extends Cubit<HomeState> {
         types: types,
         minO: minOdds,
         maxO: maxOdds,
+        minRel: minReliability,
+        confs: confidenceLevels,
+        onlyAvail: onlyAvailable,
       );
 
       final featured = filteredMatches
@@ -510,6 +587,11 @@ class HomeCubit extends Cubit<HomeState> {
           selectedPredictionTypes: types,
           minOdds: minOdds,
           maxOdds: maxOdds,
+          minReliability: minReliability,
+          selectedConfidenceLevels: confidenceLevels,
+          onlyAvailable: onlyAvailable,
+          availableLeagues: currentState.availableLeagues,
+          availablePredictionTypes: currentState.availablePredictionTypes,
         ),
       );
     }
@@ -540,6 +622,15 @@ class HomeCubit extends Cubit<HomeState> {
           selectedSport: currentState.selectedSport,
           availableSports: currentState.availableSports,
           isAllMatchesExpanded: !currentState.isAllMatchesExpanded,
+          selectedLeagues: currentState.selectedLeagues,
+          selectedPredictionTypes: currentState.selectedPredictionTypes,
+          minOdds: currentState.minOdds,
+          maxOdds: currentState.maxOdds,
+          minReliability: currentState.minReliability,
+          selectedConfidenceLevels: currentState.selectedConfidenceLevels,
+          onlyAvailable: currentState.onlyAvailable,
+          availableLeagues: currentState.availableLeagues,
+          availablePredictionTypes: currentState.availablePredictionTypes,
         ),
       );
     }
@@ -552,7 +643,10 @@ class HomeCubit extends Cubit<HomeState> {
     List<String> leagues = const [],
     List<String> types = const [],
     double minO = 1.0,
-    double maxO = 5.0,
+    double maxO = 10.0,
+    double minRel = 0.0,
+    List<String> confs = const [],
+    bool onlyAvail = false,
   }) {
     final targetDateStr = _formatDateForMatching(date);
     return matches.where((m) {
@@ -568,7 +662,22 @@ class HomeCubit extends Cubit<HomeState> {
       double mOdds = double.tryParse(m.odds ?? '1.0') ?? 1.0;
       bool oddsMatch = mOdds >= minO && mOdds <= maxO;
 
-      return dateMatch && sportMatch && leagueMatch && typeMatch && oddsMatch;
+      double rel = double.tryParse(m.marketReliability ?? '0.0') ?? 0.0;
+      bool relMatch = rel >= minRel;
+
+      bool confMatch = confs.isEmpty ||
+          (m.confidence != null && confs.contains(m.confidence));
+
+      bool availMatch = !onlyAvail || m.isAvailableInBookie;
+
+      return dateMatch &&
+          sportMatch &&
+          leagueMatch &&
+          typeMatch &&
+          oddsMatch &&
+          relMatch &&
+          confMatch &&
+          availMatch;
     }).toList();
   }
 
@@ -579,7 +688,10 @@ class HomeCubit extends Cubit<HomeState> {
     List<String> leagues = const [],
     List<String> types = const [],
     double minO = 1.0,
-    double maxO = 5.0,
+    double maxO = 10.0,
+    double minRel = 0.0,
+    List<String> confs = const [],
+    bool onlyAvail = false,
   }) {
     final targetDateStr = _formatDateForMatching(date);
     return recs.where((r) {
@@ -594,7 +706,18 @@ class HomeCubit extends Cubit<HomeState> {
       double rOdds = r.marketOdds;
       bool oddsMatch = rOdds >= minO && rOdds <= maxO;
 
-      return dateMatch && sportMatch && leagueMatch && typeMatch && oddsMatch;
+      bool relMatch = r.reliabilityScore >= minRel;
+      bool confMatch = confs.isEmpty || confs.contains(r.confidence);
+      bool availMatch = !onlyAvail || r.isAvailable;
+
+      return dateMatch &&
+          sportMatch &&
+          leagueMatch &&
+          typeMatch &&
+          oddsMatch &&
+          relMatch &&
+          confMatch &&
+          availMatch;
     }).toList();
   }
 
@@ -654,6 +777,9 @@ class HomeCubit extends Cubit<HomeState> {
             types: currentState.selectedPredictionTypes,
             minO: currentState.minOdds,
             maxO: currentState.maxOdds,
+            minRel: currentState.minReliability,
+            confs: currentState.selectedConfidenceLevels,
+            onlyAvail: currentState.onlyAvailable,
           ),
           featuredMatches: updatedMatches
               .where(
@@ -671,6 +797,11 @@ class HomeCubit extends Cubit<HomeState> {
           selectedPredictionTypes: currentState.selectedPredictionTypes,
           minOdds: currentState.minOdds,
           maxOdds: currentState.maxOdds,
+          minReliability: currentState.minReliability,
+          selectedConfidenceLevels: currentState.selectedConfidenceLevels,
+          onlyAvailable: currentState.onlyAvailable,
+          availableLeagues: currentState.availableLeagues,
+          availablePredictionTypes: currentState.availablePredictionTypes,
         ),
       );
     }

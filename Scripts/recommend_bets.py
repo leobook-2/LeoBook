@@ -132,6 +132,11 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
     # 1. Build reliability index from past results
     reliability = calculate_market_reliability(all_predictions)
     print(f"[ALGO] Built reliability index for {len(reliability)} market types.")
+
+    # 1.1 Load available bookie matches (Football.com)
+    fb_matches = query_all(conn, 'fb_matches')
+    available_fids = {m['fixture_id'] for m in fb_matches if m.get('fixture_id')}
+    print(f"[ALGO] Found {len(available_fids)} matches available in bookie (Football.com).")
     
     # 2. Filter for future matches
     now = datetime.now()
@@ -232,6 +237,7 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
                 'likelihood': likelihood,
                 'odds': odds_value,
                 'odds_status': odds_status,
+                'is_available': p.get('fixture_id') in available_fids,
             })
         except Exception:
             continue
@@ -348,7 +354,11 @@ def save_recommendations_to_predictions_csv(recommendations):
         match_key = f"{row.get('home_team')} vs {row.get('away_team')}_{row.get('date')}"
         matched_rec = rec_map.get(fid) or rec_map_teams.get(match_key)
         if matched_rec:
-            update_prediction(conn, fid, {'recommendation_score': str(round(matched_rec['score'], 2))})
+            update_data = {
+                'recommendation_score': str(round(matched_rec['score'], 2)),
+                'is_available': 1 if matched_rec.get('is_available') else 0
+            }
+            update_prediction(conn, fid, update_data)
             updates_count += 1
 
     print(f"[ALGO] Updated predictions: {updates_count} scored out of {len(all_preds)} total rows.")

@@ -13,6 +13,7 @@ import 'package:leobookapp/logic/cubit/home_cubit.dart';
 import '../widgets/shared/recommendation_card.dart';
 import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
 import 'match_details_screen.dart';
+import '../widgets/shared/recommendation_filter_modal.dart';
 
 /// Unified Top Predictions screen — lives inside MainScreen's IndexedStack.
 /// No own Scaffold/AppBar. Shows recommendations for SCHEDULED matches,
@@ -52,6 +53,44 @@ class TopPredictionsScreen extends StatelessWidget {
     }
   }
 
+  void _showFilterModal(BuildContext context, HomeLoaded state) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => RecommendationFilterModal(
+        initialLeagues: state.selectedLeagues,
+        initialPredictionTypes: state.selectedPredictionTypes,
+        initialMinOdds: state.minOdds,
+        initialMaxOdds: state.maxOdds,
+        initialMinReliability: state.minReliability,
+        initialConfidenceLevels: state.selectedConfidenceLevels,
+        initialOnlyAvailable: state.onlyAvailable,
+        availableLeagues: state.availableLeagues,
+        availablePredictionTypes: state.availablePredictionTypes,
+        onApply: ({
+          required leagues,
+          required types,
+          required minOdds,
+          required maxOdds,
+          required minReliability,
+          required confidenceLevels,
+          required onlyAvailable,
+        }) {
+          context.read<HomeCubit>().applyFilters(
+            leagues: leagues,
+            types: types,
+            minOdds: minOdds,
+            maxOdds: maxOdds,
+            minReliability: minReliability,
+            confidenceLevels: confidenceLevels,
+            onlyAvailable: onlyAvailable,
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<HomeCubit, HomeState>(
@@ -60,14 +99,12 @@ class TopPredictionsScreen extends StatelessWidget {
           return const LeoLoadingIndicator(label: 'Loading predictions...');
         }
 
-        // Filter to all top recommendations (sorted by time)
-        // Usually these are scheduled/upcoming matches
-        final recs = List<RecommendationModel>.from(state.allRecommendations);
+        // Use filtered recommendations
+        final recs = List<RecommendationModel>.from(state.filteredRecommendations);
 
         // Optional: Filter for upcoming only if desirable,
         // but often 'Top Predictions' includes the most relevant ones.
-        // We sort by time (latest first as requested before, but if they are predictions
-        // we might want earliest first? Actually the user previously said 'latest first').
+        // We sort by time (latest first as requested before).
         recs.sort((a, b) => b.time.compareTo(a.time));
 
         return Column(
@@ -99,144 +136,81 @@ class TopPredictionsScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Filter icon (placeholder)
-                  Container(
-                    padding: EdgeInsets.all(Responsive.sp(context, 6)),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius:
-                          BorderRadius.circular(Responsive.sp(context, 8)),
+                  
+                  // Filter Button
+                  IconButton(
+                    onPressed: () => _showFilterModal(context, state),
+                    icon: Icon(
+                      Icons.tune,
+                      color: state.selectedLeagues.isNotEmpty || 
+                             state.selectedPredictionTypes.isNotEmpty ||
+                             state.minReliability > 0 ||
+                             state.onlyAvailable ||
+                             state.minOdds > 1.0 ||
+                             state.maxOdds < 10.0
+                          ? AppColors.primary 
+                          : Colors.white70,
+                      size: Responsive.sp(context, 20),
                     ),
-                    child: Icon(
-                      Icons.filter_list_rounded,
-                      color: Colors.white54,
-                      size: Responsive.sp(context, 14),
-                    ),
+                    tooltip: "Filter Predictions",
                   ),
                 ],
               ),
             ),
 
-            // ── Count ──
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: Responsive.sp(context, 14),
-                vertical: Responsive.sp(context, 6),
-              ),
-              child: Row(
-                children: [
-                  Text(
-                    "${recs.length} PREDICTION${recs.length == 1 ? '' : 'S'}",
-                    style: TextStyle(
-                      fontSize: Responsive.sp(context, 8),
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textGrey,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    "LATEST FIRST",
-                    style: TextStyle(
-                      fontSize: Responsive.sp(context, 7),
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary.withValues(alpha: 0.7),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Recommendations List ──
-            Expanded(
-              child: recs.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.emoji_events_outlined,
-                            size: Responsive.sp(context, 36),
-                            color: Colors.white12,
-                          ),
-                          SizedBox(height: Responsive.sp(context, 10)),
-                          Text(
-                            "No predictions available",
-                            style: TextStyle(
-                              fontSize: Responsive.sp(context, 11),
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white24,
-                            ),
-                          ),
-                          SizedBox(height: Responsive.sp(context, 4)),
-                          Text(
-                            "Check back later for new picks",
-                            style: TextStyle(
-                              fontSize: Responsive.sp(context, 8),
-                              color: Colors.white12,
-                            ),
-                          ),
-                        ],
+            if (recs.isEmpty)
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.search_off,
+                        size: Responsive.sp(context, 48),
+                        color: Colors.white24,
                       ),
-                    )
-                  : Responsive.isDesktop(context)
-                      ? SingleChildScrollView(
-                          padding: EdgeInsets.fromLTRB(
-                            Responsive.sp(context, 14),
-                            0,
-                            Responsive.sp(context, 14),
-                            Responsive.sp(context, 80),
-                          ),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              const crossAxisCount = 3;
-                              final spacing = Responsive.sp(context, 14);
-                              final itemWidth = (constraints.maxWidth -
-                                      (spacing * (crossAxisCount - 1))) /
-                                  crossAxisCount;
-
-                              return Wrap(
-                                spacing: spacing,
-                                runSpacing: spacing,
-                                children: recs
-                                    .map(
-                                      (rec) => SizedBox(
-                                        width: itemWidth,
-                                        child: GestureDetector(
-                                          onTap: () => _navigateToMatch(
-                                            context,
-                                            rec,
-                                            state.allMatches,
-                                          ),
-                                          child: RecommendationCard(
-                                              recommendation: rec),
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                              );
-                            },
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: EdgeInsets.only(
-                            bottom: Responsive.sp(context, 80),
-                          ),
-                          itemCount: recs.length,
-                          itemBuilder: (context, index) {
-                            final rec = recs[index];
-                            return GestureDetector(
-                              onTap: () => _navigateToMatch(
-                                context,
-                                rec,
-                                state.allMatches,
-                              ),
-                              child: RecommendationCard(recommendation: rec),
-                            );
-                          },
+                      SizedBox(height: Responsive.sp(context, 16)),
+                      Text(
+                        "No matching predictions found",
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: Responsive.sp(context, 14),
+                          fontWeight: FontWeight.w600,
                         ),
-            ),
+                      ),
+                      SizedBox(height: Responsive.sp(context, 8)),
+                      TextButton(
+                        onPressed: () => context.read<HomeCubit>().resetFilters(),
+                        child: const Text("Reset Filters"),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: recs.length,
+                  itemBuilder: (context, index) {
+                    final rec = recs[index];
+                    return Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: Responsive.sp(context, 12),
+                        vertical: Responsive.sp(context, 6),
+                      ),
+                      child: RecommendationCard(
+                        recommendation: rec,
+                        onTap: () => _navigateToMatch(
+                          context,
+                          rec,
+                          state.allMatches,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
           ],
         );
       },

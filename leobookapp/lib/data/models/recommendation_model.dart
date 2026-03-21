@@ -22,6 +22,7 @@ class RecommendationModel {
   final String? leagueCrestUrl;
   final String? regionFlagUrl;
   final String league;
+  final bool isAvailable;
 
   RecommendationModel({
     required this.match,
@@ -42,6 +43,7 @@ class RecommendationModel {
     this.awayCrestUrl,
     this.leagueCrestUrl,
     this.regionFlagUrl,
+    this.isAvailable = false,
   });
 
   String get homeTeam {
@@ -134,6 +136,9 @@ class RecommendationModel {
       awayCrestUrl: json['away_crest_url']?.toString(),
       leagueCrestUrl: json['league_crest_url']?.toString(),
       regionFlagUrl: json['region_flag_url']?.toString(),
+      isAvailable: json['is_available'] == true ||
+          json['is_available'] == 1 ||
+          json['is_available'] == '1',
     );
   }
 }

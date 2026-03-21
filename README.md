@@ -3,8 +3,8 @@
 **Developer**: Materialless LLC
 **Chief Engineer**: Emenike Chinenye James
 **Powered by**: Rule Engine + Neural RL Stairway Engine · Gemini Multi-Key (AIGO browser assistant + search enrichment only)
-**Architecture**: v9.3 "Stairway Engine" (All files ≤500 lines · Fully Modular · Season-Aware RL Weighting · Streamer Independence)
-**App Version**: 9.3.0 ([pubspec.yaml](leobookapp/pubspec.yaml) aligned with `LEOBOOK_VERSION` in `Core/Utils/constants.py`)
+**Architecture**: v9.4 "Stairway Engine" (All files ≤500 lines · Fully Modular · Season-Aware RL Weighting · Streamer Independence)
+**App Version**: 9.4.0 ([pubspec.yaml](leobookapp/pubspec.yaml) aligned with `LEOBOOK_VERSION` in `Core/Utils/constants.py`)
 
 ---
 
@@ -23,7 +23,7 @@ For the complete file inventory and step-by-step execution trace, see [docs/LeoB
 
 ---
 
-## System Architecture (v9.3 — Fully Modular · Streamer Independent)
+## System Architecture (v9.4 — Fully Modular · Streamer Independent)
 
 ```
 Leo.py (Entry Point — 473 lines)
@@ -65,7 +65,7 @@ Leo.py (Entry Point — 473 lines)
 - **`Modules/Assets/`** — Asset sync: team crests, league crests, region flags (171 SVGs, 1,234 leagues)
 - **`Data/Access/`** — **Computed Standings**, Supabase sync, season completeness, outcome review
 - **`Scripts/`** — Shims + CLI tools (recommendation engine, search dictionary builder)
-- **`leobookapp/`** — Flutter dashboard (Liquid Glass + Proportional Scaling)
+- **`leobookapp/`** — Flutter dashboard (DM Sans typography · UI Inspiration palette · Recommendation filters · Live countdown)
 
 ---
 
@@ -144,10 +144,12 @@ LeoBook/
 │   ├── search_dict_llm.py
 │   └── rl_diagnose.py
 ├── leobookapp/                     # Flutter dashboard
-│   ├── pubspec.yaml                # version: 9.3.0+2
+│   ├── pubspec.yaml                # version: 9.4.0+1
 │   └── lib/
 │       ├── presentation/screens/   # search, league (6 tabs), match (3-col), team
 │       ├── core/widgets/           # LeoLoadingIndicator, LeoShimmer, GlassContainer
+│       ├── core/constants/         # AppColors (UI Inspiration palette), SpacingScale
+│       ├── core/theme/             # LeoTypography (DM Sans), AppThemeV2
 │       └── data/repositories/      # DataRepository (fetchLeagueSeasons, etc.)
 └── .devcontainer/
     ├── devcontainer.json           # remoteEnv.PATH for Flutter/Android SDK
@@ -156,7 +158,7 @@ LeoBook/
 
 ---
 
-## Quick Start (v9.3)
+## Quick Start (v9.4)
 
 ### Backend Setup
 
@@ -278,5 +280,5 @@ flutter build apk --release   # Production APK
 
 ---
 
-*Last updated: 2026-03-19 — v9.3.0 — UI overhaul (professional loading states), sync standards restructured, automatic country initialization*
+*Last updated: 2026-03-21 — v9.4.0 — Design system migration (DM Sans + UI Inspiration palette), recommendation filter system, live countdown timer, football.com SVG integration*
 *LeoBook Engineering Team — Materialless LLC*

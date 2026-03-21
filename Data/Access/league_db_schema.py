@@ -119,6 +119,7 @@ _SCHEMA_SQL = """
         override_reason     TEXT,
         statistical_edge    REAL,
         pure_model_suggestion TEXT,
+        is_available        INTEGER DEFAULT 0,
         last_updated        TEXT DEFAULT (datetime('now'))
     );
 
@@ -295,6 +296,7 @@ _ALTER_MIGRATIONS = [
     ("predictions", "override_reason", "TEXT"),
     ("predictions", "statistical_edge", "REAL"),
     ("predictions", "pure_model_suggestion", "TEXT"),
+    ("predictions", "is_available", "INTEGER DEFAULT 0"),
 ]
 
 # ── CSV → SQLite import map ───────────────────────────────────────────────────

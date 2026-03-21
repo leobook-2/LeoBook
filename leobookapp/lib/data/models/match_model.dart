@@ -44,6 +44,7 @@ class MatchModel {
   final String? homeTeamId;
   final String? awayTeamId;
   final String? outcomeCorrect; // From predictions CSV outcome_correct column
+  final bool isAvailableInBookie;
 
   MatchModel({
     required this.fixtureId,
@@ -82,6 +83,7 @@ class MatchModel {
     this.statisticalEdge,
     this.pureModelSuggestion,
     this.outcomeCorrect,
+    this.isAvailableInBookie = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -121,6 +123,7 @@ class MatchModel {
         "statistical_edge": statisticalEdge,
         "pure_model_suggestion": pureModelSuggestion,
         "outcome_correct": outcomeCorrect,
+        "is_available": isAvailableInBookie,
       };
 
   factory MatchModel.fromJson(Map<String, dynamic> json) => MatchModel.fromCsv(json, json);
@@ -162,6 +165,7 @@ class MatchModel {
     double? statisticalEdge,
     String? pureModelSuggestion,
     String? outcomeCorrect,
+    bool? isAvailableInBookie,
   }) {
     return MatchModel(
       fixtureId: fixtureId ?? this.fixtureId,
@@ -200,6 +204,7 @@ class MatchModel {
       statisticalEdge: statisticalEdge ?? this.statisticalEdge,
       pureModelSuggestion: pureModelSuggestion ?? this.pureModelSuggestion,
       outcomeCorrect: outcomeCorrect ?? this.outcomeCorrect,
+      isAvailableInBookie: isAvailableInBookie ?? this.isAvailableInBookie,
     );
   }
 
@@ -566,6 +571,12 @@ class MatchModel {
     }
 
     final outcomeCorrect = predictionData?['outcome_correct']?.toString();
+    final isAvailable = predictionData?['is_available'] == true ||
+        predictionData?['is_available'] == 1 ||
+        predictionData?['is_available'] == '1' ||
+        row['is_available'] == true ||
+        row['is_available'] == 1 ||
+        row['is_available'] == '1';
 
     return MatchModel(
       fixtureId: fixtureId,
@@ -608,6 +619,7 @@ class MatchModel {
       statisticalEdge: statisticalEdge,
       pureModelSuggestion: pureModelSuggestion,
       outcomeCorrect: outcomeCorrect,
+      isAvailableInBookie: isAvailable,
     );
   }
 
@@ -649,6 +661,7 @@ class MatchModel {
       statisticalEdge: statisticalEdge,
       pureModelSuggestion: pureModelSuggestion,
       outcomeCorrect: other.outcomeCorrect ?? outcomeCorrect,
+      isAvailableInBookie: other.isAvailableInBookie,
     );
   }
 }

@@ -1,4 +1,4 @@
-> **Version**: 8.1.1 "Stairway Engine" · **Last Updated**: 2026-03-13 · **Architecture**: 3-Phase RL (Poisson Grounding) + 30-dim Action Space + Chapter 1 v9.0 Direct Harvesting + Safety Guardrails v1.0
+> **Version**: 9.4.0 "Stairway Engine" · **Last Updated**: 2026-03-21 · **Architecture**: 3-Phase RL (Poisson Grounding) + 30-dim Action Space + Chapter 1 v9.0 Direct Harvesting + Safety Guardrails v1.0 + **Liquid Glass v3.0 (DM Sans & UI Inspiration Palette)**
 
 ## Table of Contents
 
@@ -18,12 +18,12 @@
 
 ## 1. System Overview
 
-**LeoBook v8.0 "Stairway Engine"** is an autonomous sports prediction and betting system built by **Materialless LLC** (owner: Emenike Chinenye James). The core thesis: scan 100–500 daily football matches, identify those with genuine predictive edge, and compound returns through a structured, self-protecting staking system — **Project Stairway**.
+**LeoBook v9.4 "Stairway Engine"** is an autonomous sports prediction and betting system built by **Materialless LLC** (owner: Emenike Chinenye James). The core thesis: scan 100–500 daily football matches, identify those with genuine predictive edge, and compound returns through a structured, self-protecting staking system — **Project Stairway**.
 
 | Half                      | Technology                         | Purpose                                                                                                                                  |
 | ------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Backend (Leo.py)**      | Python 3.12 + Playwright + PyTorch | Autonomous data extraction, rule-based + neural RL prediction, odds harvesting, automated bet placement, and **dynamic task scheduling** |
-| **Frontend (leobookapp)** | Flutter/Dart (flutter_bloc/Cubit)  | Dashboard with "Telegram-grade" density, liquid glass aesthetics, and proportional scaling                                               |
+| **Frontend (leobookapp)** | Flutter/Dart (flutter_bloc/Cubit)  | Dashboard with "Telegram-grade" density, **v3.0 Liquid Glass** (DM Sans, UI Inspiration palette), and recommendation filters |
 
 ### Architecture Principles
 
@@ -455,6 +455,14 @@ These are intellectually honest unknowns. They will be answered by data, not ass
 
 ## 11. Changelog
 
+### v9.4.0 — Design Overhaul & Filter System (March 21, 2026)
+- **Design System Migration**: Switched from Lexend/Inter to **DM Sans** typography.
+- **Color Palette**: Replaced original tokens with the **UI Inspiration (Night)** palette (Globe #1C1B20, Island #24232A, Primary #775CDF).
+- **Recommendation Filters**: Implemented advanced filtering in the dashboard (League selection, odds range, reliability, confidence, football.com availability).
+- **Live Countdown**: Added second-precision countdown timer to match cards (activates 1h before kickoff).
+- **football.com Integration**: Added football.com SVG logo to match cards and filter logic.
+- **Project Cleanup**: Removed stale root files, relocated assets/scripts, and synchronized versions across backend and frontend.
+
 ### v8.1.1 — Audit + Dead Code Removal (March 13, 2026)
 - **Dead Code Removed** (`93c2a61`): 4 orphaned Flashscore per-match files deleted (~1,874 lines): `Scripts/enrich_all_schedules.py`, `Modules/Flashscore/fs_processor.py`, `Modules/Flashscore/manager.py`, `Core/Browser/Extractors/standings_extractor.py`. RULEBOOK §2.7 compliance restored.
 - **Leo.py Patched**: Dead `enrich_all_schedules` import removed. `TASK_DAY_BEFORE_PREDICT` handler rewired to `prediction_pipeline.run_predictions()`. TODO inline for `target_fixture_ids` scoping.
@@ -490,5 +498,5 @@ These are intellectually honest unknowns. They will be answered by data, not ass
 - **Time-Based Cooldowns**: Replaced permanent key exhaustion with 65-second auto-recovery in `llm_health_manager.py`.
 - **Exponential Backoff**: `min(2^n, 30)` second delays on consecutive 429s in `build_search_dict.py` and `api_manager.py`.
 
-*Last updated: March 13, 2026 (v8.1.1 — Audit + Dead Code Removal)*
+*Last updated: March 21, 2026 (v9.4.0 — Design Overhaul & Filter System)*
 *LeoBook Engineering Team — Materialless LLC*

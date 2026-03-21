@@ -1,7 +1,7 @@
 name: leobookapp
 description: "LeoBook: Elite Autonomous Betting Dashboard by Materialless LLC."
 publish_to: 'none'
-version: 9.3.0+2
+version: 9.4.0+1
 
 environment:
   sdk: ^3.0.0
@@ -25,6 +25,7 @@ dependencies:
   flutter_dotenv: ^5.2.1
   provider: ^6.1.2
   google_sign_in: 6.2.1
+  flutter_svg: ^2.0.10+1
 
 dev_dependencies:
   flutter_test:
@@ -43,3 +44,4 @@ flutter:
   # Ensure the .env file exists in your project directory or update the path accordingly
   assets:
     - .env
+    - assets/icons/

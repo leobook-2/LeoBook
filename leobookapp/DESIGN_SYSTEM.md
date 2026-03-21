@@ -1,6 +1,6 @@
-# LeoBook Design System v2.0
+# LeoBook Design System v3.0
 
-> **Dart SDK**: 3.8.1 · **Flutter**: ≥3.22 · **Font**: Inter (GoogleFonts) · **Updated**: 2026-03-14
+> **Dart SDK**: 3.8.1 · **Flutter**: ≥3.22 · **Font**: DM Sans (GoogleFonts) · **Palette**: UI Inspiration (Night) · **Updated**: 2026-03-21
 
 ---
 
@@ -8,50 +8,51 @@
 
 All tokens in `lib/core/constants/app_colors.dart`.
 
-| Token | Hex | Role | WCAG |
-|---|---|---|---|
-| `primary` | `#6C63FF` | Electric violet — CTAs, focus rings | 7.1:1 on `neutral900` (AAA) |
-| `primaryLight` | `#9D97FF` | Hover / tint | — |
-| `primaryDark` | `#4B44CC` | Pressed accent | — |
-| `secondary` | `#00D4AA` | Emerald teal — success indicators | 6.8:1 on `neutral900` |
-| `secondaryLight` | `#4DFFDB` | Secondary tint | — |
-| `secondaryDark` | `#009E7E` | Secondary deep | — |
-| `success` | `#22C55E` | Correct predictions | 4.9:1 on `neutral900` |
-| `warning` | `#F59E0B` | Caution states | 3.1:1 (large text AA) |
-| `error` / `liveRed` | `#EF4444` | Error / live match | 4.6:1 on `neutral900` |
-| `neutral50–900` | scale | Backgrounds / surfaces / text | — |
-| `glass` | `#1A2332` 60% | Frosted card fill (dark) | — |
-| `glassBorder` | `#FFFFFF` 8% | Card border | — |
-| `textPrimary` | `#F1F5F9` | Body text on dark | 15:1 (AAA) |
-| `textSecondary` | `#94A3B8` | Hint / secondary | 5.9:1 (AA) |
-| `textDisabled` | `#475569` | Disabled state | — |
-| `divider` | `#1E293B` | Dividers | — |
-| `surfaceCard` | `#111827` | Card background | — |
-| `surfaceElevated` | `#1E293B` | Modal / elevated | — |
+| Token | Hex | Role |
+|---|---|---|
+| `primary` (coloured) | `#775CDF` | Purple accent — CTAs, active elements, sliders |
+| `primaryLight` | `#8B6FE8` | Hover tint |
+| `primaryDark` | `#6247C5` | Pressed / on-tap |
+| `secondary` | `#8B5B8C` | Secondary button fill |
+| `success` | `#1CDB2F` | Correct predictions, availability dots |
+| `warning` | `#F5CB3E` | Countdown timers, caution states |
+| `error` / `liveRed` | `#EB3333` | Error / live match pulse |
+| `accentPrimary` | `#B9C0FF` | Links and accent text |
+| `accentSecondary` | `#B5C89C` | Secondary accent fills |
+| `neutral900` (globe) | `#1C1B20` | Scaffold background |
+| `neutral800` (island) | `#24232A` | Cards, modals, bottom sheets |
+| `neutral700` (on_island) | `#313038` | Nav bars, borders, elevated elements |
+| `neutral600` (on_island_hover) | `#3B3A42` | Hover states |
+| `textPrimary` | `#FFFFFF` | Headings, body text on dark |
+| `textSecondary` | `#E2E2E2` | Secondary body text |
+| `textTertiary` | `#9F9F9F` | Captions, disabled, hints |
+| `divider` | `#24232A` | Dividers / dark |
+| `dividerLight` | `#303030` | Dividers / light |
+| `surfaceCard` | `#24232A` | Card background = island |
 
 ---
 
 ## 2. Typography Scale
 
-All in `lib/core/theme/leo_typography.dart`. Font: **Inter** via `GoogleFonts.inter()`.
+All in `lib/core/theme/leo_typography.dart`. Font: **DM Sans** via `GoogleFonts.dmSans()`.
 
-| Style | Size (sp) | Weight | Use case |
+| Style | Size (sp) | Weight | UI Inspiration Name |
 |---|---|---|---|
-| `displayLarge` | 57 | 400 | Hero numbers |
-| `displayMedium` | 45 | 400 | Section hero |
-| `displaySmall` | 36 | 400 | Feature headings |
-| `headlineLarge` | 32 | 700 | Page titles |
-| `headlineMedium` | 28 | 700 | Section titles |
-| `headlineSmall` | 24 | 700 | Card headlines |
-| `titleLarge` | 22 | 700 | AppBar, dialog title |
-| `titleMedium` | 16 | 600 | List tile title |
-| `titleSmall` | 14 | 600 | Subtitle |
-| `bodyLarge` | 16 | 400 | Primary body text |
-| `bodyMedium` | 14 | 400 | Standard body |
-| `bodySmall` | 12 | 400 | Caption, helper text |
-| `labelLarge` | 14 | 600 | Button labels |
-| `labelMedium` | 12 | 600 | Tags, field labels |
-| `labelSmall` | 11 | 600 | Micro labels, badges |
+| `displayLarge` | 40 | 700 | Title XL |
+| `displayMedium` | 36 | 700 | — |
+| `displaySmall` | 32 | 700 | — |
+| `headlineLarge` | 28 | 700 | — |
+| `headlineMedium` | 24 | 700 | Title L |
+| `headlineSmall` | 20 | 700 | Title M |
+| `titleLarge` | 18 | 700 | Title S |
+| `titleMedium` | 17 | 500 | — |
+| `titleSmall` | 14 | 500 | — |
+| `bodyLarge` | 17 | 400 | Body |
+| `bodyMedium` | 14 | 400 | Subhead (regular) |
+| `bodySmall` | 12 | 400 | Caption |
+| `labelLarge` | 14 | 700 | Subhead (bold) |
+| `labelMedium` | 12 | 500 | Caption (medium) |
+| `labelSmall` | 11 | 500 | Micro labels |
 
 ---
 
