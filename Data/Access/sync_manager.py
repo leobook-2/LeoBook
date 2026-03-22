@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 class SyncManager:
     """Manages bi-directional sync between local SQLite and Supabase."""
 
-    def __init__(self):
+    def __init__(self, conn=None):
         self.supabase = get_supabase_client()
-        self.conn = init_db()
+        self.conn = conn if conn is not None else init_db()
         self._created_tables = set()
         self._ensure_watermark_table()
         if not self.supabase:

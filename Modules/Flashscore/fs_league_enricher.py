@@ -149,7 +149,7 @@ async def main(
     sync_mgr = None
     try:
         from Data.Access.sync_manager import SyncManager
-        sync_mgr = SyncManager()
+        sync_mgr = SyncManager(conn=conn)
     except Exception:
         pass
 
@@ -225,15 +225,21 @@ async def main(
                     except Exception as e:
                         print(f"  [Crests] Propagation failed: {e}")
                     if sync_mgr and sync_mgr.supabase:
-                        try:
-                            from Data.Access.sync_manager import TABLE_CONFIG
-                            for tkey in ("schedules", "teams", "leagues"):
-                                cfg = TABLE_CONFIG.get(tkey)
-                                if cfg:
-                                    await sync_mgr._sync_table(tkey, cfg)
-                            print(f"  [Sync] Done at {pct}%")
-                        except Exception as e:
-                            print(f"  [Sync] Failed: {e}")
+                        for sync_attempt in range(3):
+                            try:
+                                from Data.Access.sync_manager import TABLE_CONFIG
+                                for tkey in ("schedules", "teams", "leagues"):
+                                    cfg = TABLE_CONFIG.get(tkey)
+                                    if cfg:
+                                        await sync_mgr._sync_table(tkey, cfg)
+                                print(f"  [Sync] Done at {pct}%")
+                                break
+                            except Exception as e:
+                                if 'database is locked' in str(e).lower() and sync_attempt < 2:
+                                    print(f"  [Sync] Locked — retry {sync_attempt+1}/3 in 3s...")
+                                    await asyncio.sleep(3)
+                                else:
+                                    print(f"  [Sync] Failed: {e}")
 
         await asyncio.gather(*[_worker(lg, i) for i, lg in enumerate(leagues, 1)])
         await ctx.close()
