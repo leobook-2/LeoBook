@@ -179,7 +179,6 @@ _COL_REMAP = {
     'team_name':      'name',
     'home_team_name': 'home_team',
     'away_team_name': 'away_team',
-    'country_league':  'region_league',   # local renamed; Supabase column stays region_league until ALTER
 }
 
 # ── Per-table batch sizes ─────────────────────────────────────────────────────
