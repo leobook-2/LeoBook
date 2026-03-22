@@ -291,12 +291,11 @@ class MatchModel {
 
   bool get isLive {
     final s = status.toLowerCase();
-    // Status-only check — 2.5hr time rule deprecated (v3)
+    // Status-only check — PEN and AET are finished, not live
     if (s.contains('live') ||
         s.contains('in-play') ||
         s.contains('halftime') ||
         s.contains('ht') ||
-        s.contains('penalties') ||
         s.contains('extra_time') ||
         s.contains('break')) {
       return true;
@@ -357,7 +356,13 @@ class MatchModel {
 
   String get displayStatus {
     final s = status.toLowerCase();
-    if (isLive) return "LIVE";
+    if (isLive) {
+      // Show live minute if available (e.g. "45'", "HT", "90+2'")
+      if (liveMinute != null && liveMinute!.isNotEmpty) {
+        return liveMinute!;
+      }
+      return "LIVE";
+    }
     if (isPostponed) return "POSTPONED";
     if (isCancelled) return "CANCELLED";
     if (isFrozen) return "FRO";

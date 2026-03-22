@@ -469,8 +469,8 @@ async def _catch_up_from_live_stream(page: Page, sync: SyncManager):
         await ensure_content_expanded(page)
         all_matches = await extract_all_matches(page, label="CatchUp")
 
-        LIVE_STATUSES = {'live', 'halftime', 'break', 'penalties', 'extra_time'}
-        RESOLVED_STATUSES = {'finished', 'cancelled', 'postponed', 'fro', 'abandoned'}
+        LIVE_STATUSES = {'live', 'halftime', 'break', 'extra_time'}
+        RESOLVED_STATUSES = {'finished', 'cancelled', 'postponed', 'fro', 'abandoned', 'interrupted'}
 
         live = [m for m in all_matches if m.get('status') in LIVE_STATUSES]
         resolved = [m for m in all_matches if m.get('status') in RESOLVED_STATUSES]

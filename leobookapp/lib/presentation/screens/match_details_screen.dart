@@ -51,13 +51,16 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
     final homeMatches = await repository.getTeamMatches(match.homeTeam);
     final awayMatches = await repository.getTeamMatches(match.awayTeam);
 
-    // Fetch Standings
+    // Fetch Standings — use actual leagueId (not display name)
     List<StandingModel> sTable = [];
-    if (match.leagueId != null || match.league != null) {
+    if (match.leagueId != null && match.leagueId!.isNotEmpty) {
       sTable = await repository.fetchStandings(
-        leagueId: match.leagueId ?? match.league!,
+        leagueId: match.leagueId!,
       );
     }
+
+    // H2H: dedicated query for both team combinations
+    final h2h = await repository.getH2HMatches(match.homeTeam, match.awayTeam);
 
     // Past matches only
     final now = DateTime.now();
@@ -73,23 +76,13 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
 
     final pastHome = homeMatches.where(isPast).take(10).toList();
     final pastAway = awayMatches.where(isPast).take(10).toList();
-
-    // H2H: matches where both teams participated
-    final h2h = homeMatches
-        .where(
-          (m) =>
-              (m.homeTeam == match.homeTeam && m.awayTeam == match.awayTeam) ||
-              (m.homeTeam == match.awayTeam && m.awayTeam == match.homeTeam),
-        )
-        .where(isPast)
-        .take(10)
-        .toList();
+    final pastH2H = h2h.where(isPast).take(10).toList();
 
     if (mounted) {
       setState(() {
         _homeHistory = pastHome;
         _awayHistory = pastAway;
-        _h2hHistory = h2h;
+        _h2hHistory = pastH2H;
         _standings = sTable;
         _isLoadingIndices = false;
       });
@@ -1089,8 +1082,8 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (context) => LeagueScreen(
-                        leagueId: match.league ?? "LEAGUE",
-                        leagueName: match.league ?? "LEAGUE",
+                        leagueId: match.leagueId ?? match.league ?? '',
+                        leagueName: match.league ?? '',
                       ),
                     ),
                   );

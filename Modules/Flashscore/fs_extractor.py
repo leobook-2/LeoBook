@@ -146,7 +146,9 @@ async def extract_all_matches(page: Page, label: str = "Extractor") -> list:
                 const minLower = minute.toLowerCase();
                 if (minLower === 'ht' || minLower.includes('half')) status = 'halftime';
                 else if (minLower.includes('break')) status = 'break';
-                else if (minLower.includes('pen')) { status = 'penalties'; stageDetail = 'Pen'; }
+                else if (minLower.includes('pen') || minLower.includes('penalty')) { status = 'finished'; stageDetail = 'After Pen'; }
+                else if (minLower === 'aet' || minLower === 'afteret') { status = 'finished'; stageDetail = 'AET'; }
+                else if (minLower === 'int' || minLower.includes('interrupt')) { status = 'interrupted'; stageDetail = 'INT'; }
                 else if (minLower.includes('et') && !minLower.match(/^\d/)) { status = 'extra_time'; stageDetail = 'ET'; }
             } else if (stageLower.includes('postp') || stageLower.includes('pp')) {
                 status = 'postponed'; stageDetail = 'Postp'; homeScore = ''; awayScore = '';

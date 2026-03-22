@@ -99,66 +99,28 @@ class DataRepository {
 
   Future<List<MatchModel>> getTeamMatches(String teamName) async {
     try {
-      // Run predictions + schedules in parallel (not sequential) to halve latency
-      final results = await Future.wait([
-        _supabase
-            .from('predictions')
-            .select()
-            .or('home_team.eq."$teamName",away_team.eq."$teamName"')
-            .order('date', ascending: false)
-            .limit(10),
-        _supabase
+      // Query schedules only (predictions table may be empty)
+      var schedList = await _supabase
+          .from('schedules')
+          .select()
+          .or('home_team.eq."$teamName",away_team.eq."$teamName"')
+          .order('date', ascending: false)
+          .limit(20);
+
+      List<dynamic> rows = schedList as List<dynamic>;
+
+      // Fuzzy fallback if empty
+      if (rows.isEmpty) {
+        final fuzzy = await _supabase
             .from('schedules')
             .select()
-            .or('home_team.eq."$teamName",away_team.eq."$teamName"')
+            .or('home_team.ilike."%$teamName%",away_team.ilike."%$teamName%"')
             .order('date', ascending: false)
-            .limit(10),
-      ]);
-
-      List<dynamic> predList = results[0] as List<dynamic>;
-      List<dynamic> schedList = results[1] as List<dynamic>;
-
-      // Fallback to fuzzy match only if both are empty
-      if (predList.isEmpty && schedList.isEmpty) {
-        final fuzzy = await Future.wait([
-          _supabase
-              .from('predictions')
-              .select()
-              .or('home_team.ilike."%$teamName%",away_team.ilike."%$teamName%"')
-              .order('date', ascending: false)
-              .limit(10),
-          _supabase
-              .from('schedules')
-              .select()
-              .or('home_team.ilike."%$teamName%",away_team.ilike."%$teamName%"')
-              .order('date', ascending: false)
-              .limit(10),
-        ]);
-        predList = fuzzy[0] as List<dynamic>;
-        schedList = fuzzy[1] as List<dynamic>;
+            .limit(20);
+        rows = fuzzy as List<dynamic>;
       }
 
-      final List<MatchModel> matches = [];
-      final Set<String> seenIds = {};
-
-      void addMatches(List<dynamic> rows, bool isPrediction) {
-        for (var row in rows) {
-          final m = isPrediction
-              ? MatchModel.fromCsv(row, row)
-              : MatchModel.fromCsv(row);
-          final id = m.fixtureId;
-          if (!seenIds.contains(id)) {
-            matches.add(m);
-            seenIds.add(id);
-          }
-        }
-      }
-
-      addMatches(predList, true);
-      addMatches(schedList, false);
-
-      // Skip fetchTeamCrests() — crests already present in prediction/schedule rows.
-      // The full teams table scan was causing statement timeouts on free tier.
+      final matches = rows.map((row) => MatchModel.fromCsv(row)).toList();
 
       matches.sort((a, b) {
         try {
@@ -171,6 +133,24 @@ class DataRepository {
       return matches;
     } catch (e) {
       debugPrint("DataRepository Error (Team Matches): $e");
+      return [];
+    }
+  }
+
+  /// Dedicated H2H query: finds matches where BOTH teams participated
+  Future<List<MatchModel>> getH2HMatches(String teamA, String teamB) async {
+    try {
+      // Query both combinations: A vs B and B vs A
+      final response = await _supabase
+          .from('schedules')
+          .select()
+          .or('and(home_team.eq."$teamA",away_team.eq."$teamB"),and(home_team.eq."$teamB",away_team.eq."$teamA")')
+          .order('date', ascending: false)
+          .limit(10);
+
+      return (response as List).map((row) => MatchModel.fromCsv(row)).toList();
+    } catch (e) {
+      debugPrint("DataRepository Error (H2H): $e");
       return [];
     }
   }
@@ -219,17 +199,10 @@ class DataRepository {
 
   Future<List<StandingModel>> fetchStandings({required String leagueId, String? season}) async {
     try {
-      // Safety net: if leagueId is a composite string (e.g. "REGION: League Name"), strip the region.
-      // Primary fix is in UI passing leagueId, but this handles legacy or mixed cases.
-      String cleanId = leagueId;
-      if (cleanId.contains(': ')) {
-        cleanId = cleanId.split(': ').last.trim();
-      }
-
       var query = _supabase
           .from('computed_standings')
           .select()
-          .eq('league_id', cleanId);
+          .eq('league_id', leagueId);
       
       if (season != null) {
         query = query.eq('season', season);
