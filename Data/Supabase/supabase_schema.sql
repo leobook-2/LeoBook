@@ -568,19 +568,29 @@ WITH all_matches AS (
     FROM public.schedules
     WHERE home_score IS NOT NULL AND away_score IS NOT NULL
       AND match_status = 'finished'
+),
+standings AS (
+    SELECT
+        league_id, season, team_id,
+        MAX(team_name) AS team_name,
+        COUNT(*)::INTEGER AS played,
+        SUM(CASE WHEN gf > ga THEN 1 ELSE 0 END)::INTEGER AS won,
+        SUM(CASE WHEN gf = ga THEN 1 ELSE 0 END)::INTEGER AS drawn,
+        SUM(CASE WHEN gf < ga THEN 1 ELSE 0 END)::INTEGER AS lost,
+        SUM(gf)::INTEGER AS goals_for,
+        SUM(ga)::INTEGER AS goals_against,
+        (SUM(gf) - SUM(ga))::INTEGER AS goal_difference,
+        SUM(CASE WHEN gf > ga THEN 3 WHEN gf = ga THEN 1 ELSE 0 END)::INTEGER AS points
+    FROM all_matches
+    GROUP BY league_id, season, team_id
 )
 SELECT
-    league_id, season, team_id, team_name,
-    COUNT(*)::INTEGER AS played,
-    SUM(CASE WHEN gf > ga THEN 1 ELSE 0 END)::INTEGER AS won,
-    SUM(CASE WHEN gf = ga THEN 1 ELSE 0 END)::INTEGER AS drawn,
-    SUM(CASE WHEN gf < ga THEN 1 ELSE 0 END)::INTEGER AS lost,
-    SUM(gf)::INTEGER AS goals_for,
-    SUM(ga)::INTEGER AS goals_against,
-    (SUM(gf) - SUM(ga))::INTEGER AS goal_difference,
-    SUM(CASE WHEN gf > ga THEN 3 WHEN gf = ga THEN 1 ELSE 0 END)::INTEGER AS points
-FROM all_matches
-GROUP BY league_id, season, team_id, team_name;
+    *,
+    ROW_NUMBER() OVER (
+        PARTITION BY league_id, season
+        ORDER BY points DESC, goal_difference DESC, goals_for DESC, team_name
+    )::INTEGER AS position
+FROM standings;
 
 GRANT SELECT ON public.computed_standings TO anon, authenticated, service_role;
 

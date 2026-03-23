@@ -47,17 +47,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
       season: currentSeason,
     );
 
-    // Trust the DB position — no custom re-sort.
-    // Only sort as a safety fallback if positions are all 0 (unset).
-    final hasPositions = standings.any((s) => s.position > 0);
-    if (!hasPositions && standings.isNotEmpty) {
-      standings.sort((a, b) {
-        if (b.points != a.points) return b.points.compareTo(a.points);
-        if (b.goalDiff != a.goalDiff) return b.goalDiff.compareTo(a.goalDiff);
-        if (b.goalsFor != a.goalsFor) return b.goalsFor.compareTo(a.goalsFor);
-        return a.teamName.compareTo(b.teamName);
-      });
-    }
+    // VIEW now provides position via ROW_NUMBER() — no client-side sort needed.
 
     // For featured matches in this league, we'll fetch predictions for today
     final allMatches = await repo.fetchMatches(date: DateTime.now());

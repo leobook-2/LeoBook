@@ -374,7 +374,7 @@ _COMPUTED_STANDINGS_SQL = """
           AND (TYPEOF(s.home_score) != 'text' OR CAST(s.home_score AS INTEGER) = s.home_score)
     )
     SELECT
-        league_id, team_id, team_name, season,
+        league_id, team_id, MAX(team_name) AS team_name, season,
         COUNT(*) AS played,
         SUM(wins) AS wins,
         SUM(draws) AS draws,
@@ -385,7 +385,7 @@ _COMPUTED_STANDINGS_SQL = """
         SUM(points) AS points
     FROM match_results
     WHERE 1=1 {filters}
-    GROUP BY league_id, team_id, team_name, season
+    GROUP BY league_id, team_id, season
     ORDER BY league_id, season, points DESC, goal_difference DESC, goals_for DESC
 """
 
