@@ -383,45 +383,68 @@ async def _navigate_to_prev_day(page: Page) -> bool:
         return False
 
 
-def _get_earliest_live_score_date() -> date | None:
-    """Retrieve the earliest date from the live_scores table."""
+def _get_catch_up_start_date() -> date | None:
+    """Determine the earliest date that needs catch-up.
+
+    Checks two persistent sources (schedules + predictions) for evidence
+    that the streamer was down and matches went unresolved:
+      1. schedules with match_status='live' (stale live matches)
+      2. predictions with status='pending' for dates in the last 7 days
+
+    Returns the earliest date needing resolution, or None if nothing is stale.
+    """
     conn = _get_conn()
-    rows = query_all(conn, 'live_scores')
-    if not rows:
-        return None
+    today = date.today()
+    week_ago = (today - timedelta(days=7)).isoformat()
 
     earliest = None
-    for row in rows:
-        d = row.get('date', '') or ''
-        # Try DD.MM.YYYY format
-        m = re.match(r'^(\d{2})\.(\d{2})\.(\d{4})$', d)
-        if m:
-            d = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+
+    # Source 1: Stale 'live' fixtures (streamer died mid-match)
+    rows = conn.execute(
+        "SELECT date FROM schedules WHERE match_status = 'live' AND date >= ? ORDER BY date ASC LIMIT 1",
+        (week_ago,)
+    ).fetchone()
+    if rows and rows[0]:
         try:
-            parsed = date.fromisoformat(d)
-            if earliest is None or parsed < earliest:
-                earliest = parsed
+            candidate = date.fromisoformat(rows[0])
+            if candidate < today and (earliest is None or candidate < earliest):
+                earliest = candidate
         except ValueError:
-            continue
+            pass
+
+    # Source 2: Pending predictions with dates before today (should have been resolved)
+    rows2 = conn.execute(
+        "SELECT date FROM predictions WHERE status = 'pending' AND date >= ? AND date < ? ORDER BY date ASC LIMIT 1",
+        (week_ago, today.isoformat())
+    ).fetchone()
+    if rows2 and rows2[0]:
+        try:
+            candidate = date.fromisoformat(rows2[0])
+            if earliest is None or candidate < earliest:
+                earliest = candidate
+        except ValueError:
+            pass
+
     return earliest
 
 
 async def _catch_up_from_live_stream(page: Page, sync: SyncManager):
     """
     Catch-up logic on startup/restart.
-    Checks live_scores for unresolved matches, then navigates day-by-day
-    from the earliest date to today, extracting and propagating each day.
+    Checks schedules/predictions for unresolved matches, then navigates
+    day-by-day from the earliest stale date to today, extracting and
+    propagating each day.
     """
-    earliest = _get_earliest_live_score_date()
+    earliest = _get_catch_up_start_date()
     today = date.today()
 
     if earliest is None:
-        print("   [Streamer] No pending live_scores — skipping catch-up.")
+        print("   [Streamer] No stale matches found — no catch-up needed.")
         return
 
     days_behind = (today - earliest).days
     if days_behind <= 0:
-        print("   [Streamer] live_scores are current — no catch-up needed.")
+        print("   [Streamer] All matches current — no catch-up needed.")
         return
 
     print(f"   [Streamer] ⚡ Catch-up needed: {days_behind} day(s) behind (earliest: {earliest}).")
