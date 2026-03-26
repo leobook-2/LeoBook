@@ -95,10 +95,17 @@ def validate_match(match: Dict, tab: str) -> Tuple[bool, List[str]]:
             violations.append(f"match[{match.get('fixture_id', '?')}].{field}")
 
     if tab == "results":
-        for field in _MATCH_RESULTS_ONLY:
-            val = match.get(field)
-            if val is None or (isinstance(val, str) and not val.strip()):
-                violations.append(f"match[{match.get('fixture_id', '?')}].{field}")
+        # Scores are only required for genuinely finished matches.
+        # Cancelled, postponed, abandoned, and walkover entries appear on the
+        # results tab but legitimately carry no scores. Enforcing score presence
+        # on those rows is a false contract violation.
+        status = (match.get("match_status") or "").lower()
+        score_required = status in ("finished", "ft", "aet", "pen", "after pen", "after et")
+        if score_required:
+            for field in _MATCH_RESULTS_ONLY:
+                val = match.get(field)
+                if val is None or (isinstance(val, str) and not val.strip()):
+                    violations.append(f"match[{match.get('fixture_id', '?')}].{field}")
 
     return (len(violations) == 0, violations)
 
