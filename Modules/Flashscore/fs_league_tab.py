@@ -334,21 +334,65 @@ async def enrich_single_league(
             const links = document.querySelectorAll(s.breadcrumb_links);
             const target = links.length >= 2 ? links[1] : links[0];
             if (!target) return '';
-            const img = document.querySelector(s.region_flag_img) || target.querySelector('img');
-            return img ? (img.src || img.getAttribute('data-src') || '') : '';
+
+            // Strategy 1: direct <img> inside or near the breadcrumb link
+            const img = target.querySelector('img')
+                     || target.parentElement?.querySelector('img');
+            if (img) {
+                const src = img.src || img.getAttribute('data-src') || '';
+                if (src && !src.startsWith('data:')) return src;
+            }
+
+            // Strategy 2: CSS background-image on flag span/div
+            const candidates = [
+                target.querySelector('.flag'),
+                target.querySelector('[class*="flag"]'),
+                target.previousElementSibling,
+                target.parentElement?.querySelector('.flag'),
+                target.parentElement?.querySelector('[class*="flag"]'),
+            ].filter(Boolean);
+            for (const el of candidates) {
+                const bg = getComputedStyle(el).backgroundImage || '';
+                const m = bg.match(/url\\(["']?(https?:\\/\\/[^"')]+)["']?\\)/);
+                if (m) return m[1];
+            }
+
+            // Strategy 3: any element with a flag-like class near breadcrumb
+            const header = document.querySelector('.heading') || document.querySelector('.tournamentHeader');
+            if (header) {
+                const flagEl = header.querySelector('[class*="flag"]') || header.querySelector('img');
+                if (flagEl) {
+                    if (flagEl.tagName === 'IMG') {
+                        const src = flagEl.src || flagEl.getAttribute('data-src') || '';
+                        if (src && !src.startsWith('data:')) return src;
+                    }
+                    const bg = getComputedStyle(flagEl).backgroundImage || '';
+                    const m = bg.match(/url\\(["']?(https?:\\/\\/[^"')]+)["']?\\)/);
+                    if (m) return m[1];
+                }
+            }
+
+            return '';
         }""", selectors)
 
         region_flag_path = ""
         if region_flag_url and not region_flag_url.startswith("data:"):
-            flag_dest = os.path.join(CRESTS_DIR, "flags",
-                                     f"{_slugify(region_name or country_code or 'unknown')}.png")
+            print(f"    [Flag] URL: {region_flag_url[:80]}")
+            flag_slug = _slugify(region_name or country_code or 'unknown')
+            flag_dest = os.path.join(CRESTS_DIR, "flags", f"{flag_slug}.png")
             try:
                 os.makedirs(os.path.join(BASE_DIR, os.path.dirname(flag_dest)), exist_ok=True)
                 r = schedule_image_download(region_flag_url, flag_dest).result(timeout=10)
                 if r:
-                    region_flag_path = r
-            except Exception:
-                pass
+                    sb_url = upload_crest_to_supabase(r, "flags", f"{flag_slug}.png")
+                    region_flag_path = sb_url if sb_url else r
+                    print(f"    [Flag] {'Supabase' if sb_url else 'local'}: {flag_slug}.png")
+                else:
+                    print(f"    [Flag] [!] Download returned empty")
+            except Exception as e:
+                print(f"    [Flag] [!] Download failed: {e}")
+        else:
+            print(f"    [Flag] [!] No flag URL found in DOM (url={repr(region_flag_url)[:60]})")
 
         crest_url  = await page.evaluate(EXTRACT_CREST_JS, selectors)
         crest_path = ""
