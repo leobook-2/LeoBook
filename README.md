@@ -61,7 +61,7 @@ Leo.py (Entry Point — 473 lines)
 - **`Core/Intelligence/`** — AI engine (rule-based prediction, **neural RL engine**, adaptive learning, AIGO self-healing)
 - **`Core/System/`** — **Task Scheduler**, **Data Readiness Checker**, **Bet Safety Guardrails**, lifecycle, withdrawal
 - **`Modules/Flashscore/`** — Schedule extraction (`fs_league_enricher.py`), live score streaming, match data processing
-- **`Modules/FootballCom/`** — Betting platform automation (login, odds, booking, withdrawal)
+- **`Modules/FootballCom/`** — Betting platform automation (login, odds, booking, withdrawal, sequential extraction)
 - **`Modules/Assets/`** — Asset sync: team crests, league crests, region flags (171 SVGs, 1,234 leagues)
 - **`Data/Access/`** — **Computed Standings**, Supabase sync, season completeness, outcome review
 - **`Scripts/`** — Shims + CLI tools (recommendation engine, search dictionary builder)
@@ -278,7 +278,11 @@ flutter run -d android        # Android (connected device)
 flutter build apk --release   # Production APK
 ```
 
+### Download APK
+
+[**📱 Download LeoBook APK (Android)**](https://drive.google.com/file/d/1f987PBVQS1X7tiH_DFLfPfSkWkC72WMQ/view?usp=drive_link)
+
 ---
 
-*Last updated: 2026-03-21 — v9.4.0 — Design system migration (DM Sans + UI Inspiration palette), recommendation filter system, live countdown timer, football.com SVG integration*
+*Last updated: 2026-03-26 — v9.4.1 — Ch1 pipeline bug fixes (6 bugs: NameError typo, NoneType crash, race condition, zero resolution, partial hydration retry, off-season league filter), Flashscore UI parity (round grouping, winner highlighting, red cards)*
 *LeoBook Engineering Team — Materialless LLC*

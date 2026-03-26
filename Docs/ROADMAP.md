@@ -1,8 +1,8 @@
 # LeoBook — Chapter & Page File Dependency Map
 
-> **Version**: 9.3 · **Last Updated**: 2026-03-15
-> Reflects fully completed modularisation + streamer independence.
-> Previous version: 9.2 (pending Prompts 6+9 + streamer)
+> **Version**: 9.4.1 · **Last Updated**: 2026-03-26
+> Reflects fully completed modularisation + streamer independence + Ch1 pipeline fixes.
+> Previous version: 9.4 (Flashscore UI parity + design system migration)
 
 ---
 
@@ -98,7 +98,8 @@
 | File | Role |
 |---|---|
 | `Core/System/pipeline.py` | `run_chapter_1_p1(p)` |
-| `Modules/FootballCom/fb_manager.py` | `run_odds_harvesting(p)` |
+| `Modules/FootballCom/fb_manager.py` | `run_odds_harvesting(p)` — Phase 0 empty filter + sequential extraction |
+| `Modules/FootballCom/extractor.py` | `extract_league_matches()` — hydration retry loop |
 | `Modules/FootballCom/odds_extractor.py` | Per-market odds extraction |
 | `Modules/FootballCom/navigator.py` | Page navigation, login, balance |
 | `Modules/FootballCom/booker/booking_code.py` | Booking code extraction |
@@ -400,6 +401,12 @@
 | 19 | `dt.now()` in streamer (4 locations) violated WAT standard | `Modules/Flashscore/fs_live_streamer.py` | Replaced with `now_ng()` throughout |
 | 20 | Dead code: `enrich_match_metadata.py`, `fs_schedule.py`, `fs_utils.py`, `fs_offline.py`, `backtest_monitor.py` | All 5 deleted | Confirmed zero active callers — RULEBOOK §2.7 |
 | 21 | `league_db.sqlite` — 0-byte orphan ghost file in `Data/Access/` | `Data/Access/` | Deleted |
+| 22 | `all_resolved` NameError crashes Supabase sync print (typo) | `Modules/FootballCom/fb_manager.py` | Renamed to `all_resolved_matches` |
+| 23 | `NoneType.lower()` crash in `get_market_option()` — NULL team names | `Data/Access/prediction_accuracy.py` | `(x or '').lower()` null guard |
+| 24 | Race condition: concurrent pages in shared browser context → DOM cross-contamination | `Modules/FootballCom/fb_manager.py` | Forced `Semaphore(1)` for league extraction |
+| 25 | 0/907 fixtures resolved — batch phase revisits empty pages | `Modules/FootballCom/fb_manager.py` | Phase 0 returns empty league URLs → pre-filtered from batch |
+| 26 | Partial hydration silently drops fixtures (1/3, 6/9 cards) | `Modules/FootballCom/extractor.py` | Retry loop (2 retries + scroll-reset + 2s wait) |
+| 27 | 60% of leagues navigated are off-season, wasting ~10min/run | `Modules/FootballCom/fb_manager.py` | Empty leagues from Phase 0 excluded from batch processing |
 
 ---
 
@@ -461,7 +468,9 @@ Flutter app converts WAT → user local timezone in the app layer.
 | `5c9e448` | **v9.3** Fix: adaptive hydration recovery scroll + suppress scroll/wait log noise |
 | `20c4d88` | **v9.3** Feat: batch resume checkpoint — restart picks up from last completed batch |
 | `5a06755` | **v9.3** Fix: correct misleading SearchDict log line in Ch1P1 |
+| `78b37b7` | **v9.4** Feat: Flashscore UI parity — round grouping, winner highlighting, red cards, league stage |
+| pending | **v9.4.1** Fix: Ch1 pipeline — 6 bugs (NameError, NoneType crash, race condition, zero resolution, partial hydration, off-season filter) |
 
 ---
 
-*LeoBook Engineering — Materialless LLC · 2026-03-15 · v9.3*
+*LeoBook Engineering — Materialless LLC · 2026-03-26 · v9.4.1*

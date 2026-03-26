@@ -3,6 +3,8 @@
 #
 # Functions: extract_league_matches(), validate_match_data()
 #
+# v1.2 (2026-03-26): _activate_and_wait_for_matches() now retries partial
+#   hydration up to 2 times with scroll-reset + 2s wait before proceeding.
 # v1.1 (2026-03-26): _recursive_scroll_cards() now delegates to _scroll_to_load()
 #   from fs_league_hydration — adaptive micro-poll wait, bottom detection,
 #   scroll reset, and consistent logging.

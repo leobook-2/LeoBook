@@ -1,7 +1,10 @@
-# prediction_accuracy.py: prediction_accuracy.py: Analytical tools for measuring prediction success.
+# prediction_accuracy.py: Analytical tools for measuring prediction success.
 # Part of LeoBook Data — Access Layer
 #
 # Functions: get_market_option(), calculate_accuracy_by_date(), calculate_overall_accuracy(), calculate_accuracy_by_confidence(), format_date_for_display(), format_date_range(), print_accuracy_report()
+#
+# v1.1 (2026-03-26): get_market_option() now null-guards home_team/away_team
+#   with (x or '').lower() to prevent NoneType crash on SQL NULL values.
 
 """
 Prediction Accuracy Analysis Module

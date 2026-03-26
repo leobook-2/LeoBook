@@ -3,9 +3,13 @@
 #
 # Functions: _create_session(), _create_session_no_login(), run_odds_harvesting(), run_automated_booking()
 # Called by: Leo.py (Chapter 1 Page 1, Chapter 2 Page 1)
+#
+# v4.1 (2026-03-26): Fixed NameError typo (all_resolved), forced Semaphore(1)
+#   for sequential extraction (race condition fix), Phase 0 now returns empty
+#   league URLs for pre-filtering batch phase (zero-resolution fix).
 
 """
-Football.com Orchestrator — v4.0 (Single-nav per league, fuzzy-only matching, concurrent odds)
+Football.com Orchestrator — v4.1 (Sequential extraction, Phase 0 empty-league filter)
 Two exported functions with shared session setup.
 """
 
