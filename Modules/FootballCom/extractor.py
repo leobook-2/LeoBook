@@ -273,12 +273,35 @@ async def _extract_matches_from_container(container, match_card_sel, home_team_s
         # Tournament / full-page path: query the entire document.
         return await container.evaluate(r"""(args) => {
             const { selectors, leagueText, targetDate } = args;
+            const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+            function parseDateFromTimeStr(raw) {
+                // "10 Apr, 20:00" → { date: "2026-04-10", time: "20:00" }
+                // "20:00"         → { date: null,         time: "20:00" }
+                if (!raw) return { date: null, time: null };
+                const m = raw.match(/(\d{1,2})\s+([A-Za-z]{3}),?\s*(\d{2}:\d{2})/);
+                if (m) {
+                    const day = m[1].padStart(2, '0');
+                    const mon = MONTHS[m[2].toLowerCase()];
+                    if (mon) {
+                        const monStr = String(mon).padStart(2, '0');
+                        const now = new Date();
+                        let year = now.getFullYear();
+                        // If month is in the past relative to now, it's likely next year
+                        if (mon < now.getMonth() + 1 || (mon === now.getMonth() + 1 && parseInt(m[1]) < now.getDate())) {
+                            // Could be this year (past match) or next year — keep this year
+                        }
+                        return { date: `${year}-${monStr}-${day}`, time: m[3] };
+                    }
+                }
+                // Fallback: just a time like "20:00"
+                const t = raw.match(/(\d{2}:\d{2})/);
+                return { date: null, time: t ? t[1] : raw };
+            }
             const results = [];
             const cards = document.querySelectorAll(selectors.match_card_sel);
             cards.forEach(card => {
                 const homeEl = card.querySelector(selectors.home_team_sel);
                 const awayEl = card.querySelector(selectors.away_team_sel);
-                // BUG2 FIX: fallback selector chain — return null if no time element found
                 const timeEl = card.querySelector(selectors.time_sel)
                     || card.querySelector('.match-time')
                     || card.querySelector('.ko-time')
@@ -288,26 +311,28 @@ async def _extract_matches_from_container(container, match_card_sel, home_team_s
                     || card.querySelector('[data-time]');
                 const linkEl = card.querySelector(selectors.match_url_sel) || card.closest('a');
                 if (homeEl && awayEl) {
-                    const dateEl = card.querySelector(
-                        '[data-date], [class*="match-date"], '
-                        + '[class*="event-date"], [class*="matchdate"], '
-                        + '[class*="date-label"]'
-                    );
-                    let cardDate = dateEl
-                        ? (dateEl.dataset.date || dateEl.innerText.trim())
-                        : targetDate;
-                    if (cardDate && !/^\d{4}-\d{2}-\d{2}$/.test(cardDate)) {
-                        cardDate = targetDate;
-                    }
                     const rawTime = timeEl ? timeEl.innerText.trim() : null;
-                    // Clean time: strip date prefix like "21 Mar, 10:00" → "10:00"
-                    const cleanTime = rawTime && rawTime.includes(',')
-                        ? rawTime.split(',').pop().trim()
-                        : rawTime;
+                    const parsed = parseDateFromTimeStr(rawTime);
+                    // Date priority: parsed from time string > dedicated date element > targetDate
+                    let cardDate = parsed.date;
+                    if (!cardDate) {
+                        const dateEl = card.querySelector(
+                            '[data-date], [class*="match-date"], '
+                            + '[class*="event-date"], [class*="matchdate"], '
+                            + '[class*="date-label"]'
+                        );
+                        cardDate = dateEl
+                            ? (dateEl.dataset.date || dateEl.innerText.trim())
+                            : null;
+                        if (cardDate && !/^\d{4}-\d{2}-\d{2}$/.test(cardDate)) {
+                            cardDate = null;
+                        }
+                    }
+                    if (!cardDate) cardDate = targetDate;
                     results.push({
                         home: homeEl.innerText.trim(),
                         away: awayEl.innerText.trim(),
-                        time: cleanTime,
+                        time: parsed.time,
                         league: leagueText,
                         url: linkEl ? linkEl.href : "",
                         date: cardDate
@@ -330,12 +355,27 @@ async def _extract_matches_from_container(container, match_card_sel, home_team_s
         # cross-section bleed.
         return await container.evaluate(r"""(element, args) => {
             const { selectors, leagueText, targetDate } = args;
+            const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+            function parseDateFromTimeStr(raw) {
+                if (!raw) return { date: null, time: null };
+                const m = raw.match(/(\d{1,2})\s+([A-Za-z]{3}),?\s*(\d{2}:\d{2})/);
+                if (m) {
+                    const day = m[1].padStart(2, '0');
+                    const mon = MONTHS[m[2].toLowerCase()];
+                    if (mon) {
+                        const monStr = String(mon).padStart(2, '0');
+                        const year = new Date().getFullYear();
+                        return { date: `${year}-${monStr}-${day}`, time: m[3] };
+                    }
+                }
+                const t = raw.match(/(\d{2}:\d{2})/);
+                return { date: null, time: t ? t[1] : raw };
+            }
             const results = [];
             const cards = element.querySelectorAll(selectors.match_card_sel);
             cards.forEach(card => {
                 const homeEl = card.querySelector(selectors.home_team_sel);
                 const awayEl = card.querySelector(selectors.away_team_sel);
-                // BUG2 FIX: fallback selector chain — return null if no time element found
                 const timeEl = card.querySelector(selectors.time_sel)
                     || card.querySelector('.match-time')
                     || card.querySelector('.ko-time')
@@ -345,26 +385,27 @@ async def _extract_matches_from_container(container, match_card_sel, home_team_s
                     || card.querySelector('[data-time]');
                 const linkEl = card.querySelector(selectors.match_url_sel) || card.closest('a');
                 if (homeEl && awayEl) {
-                    const dateEl = card.querySelector(
-                        '[data-date], [class*="match-date"], '
-                        + '[class*="event-date"], [class*="matchdate"], '
-                        + '[class*="date-label"]'
-                    );
-                    let cardDate = dateEl
-                        ? (dateEl.dataset.date || dateEl.innerText.trim())
-                        : targetDate;
-                    if (cardDate && !/^\d{4}-\d{2}-\d{2}$/.test(cardDate)) {
-                        cardDate = targetDate;
-                    }
                     const rawTime = timeEl ? timeEl.innerText.trim() : null;
-                    // Clean time: strip date prefix like "21 Mar, 10:00" → "10:00"
-                    const cleanTime = rawTime && rawTime.includes(',')
-                        ? rawTime.split(',').pop().trim()
-                        : rawTime;
+                    const parsed = parseDateFromTimeStr(rawTime);
+                    let cardDate = parsed.date;
+                    if (!cardDate) {
+                        const dateEl = card.querySelector(
+                            '[data-date], [class*="match-date"], '
+                            + '[class*="event-date"], [class*="matchdate"], '
+                            + '[class*="date-label"]'
+                        );
+                        cardDate = dateEl
+                            ? (dateEl.dataset.date || dateEl.innerText.trim())
+                            : null;
+                        if (cardDate && !/^\d{4}-\d{2}-\d{2}$/.test(cardDate)) {
+                            cardDate = null;
+                        }
+                    }
+                    if (!cardDate) cardDate = targetDate;
                     results.push({
                         home: homeEl.innerText.trim(),
                         away: awayEl.innerText.trim(),
-                        time: cleanTime,
+                        time: parsed.time,
                         league: leagueText,
                         url: linkEl ? linkEl.href : "",
                         date: cardDate
