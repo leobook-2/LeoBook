@@ -287,15 +287,30 @@ async def enrich_single_league(
 
     page = await context.new_page()
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        await page.goto(url, wait_until="networkidle", timeout=60000)
         await fs_universal_popup_dismissal(page)
 
         selectors = selector_mgr.get_all_selectors_for_context(CONTEXT_LEAGUE)
         breadcrumb_sel = selectors.get("breadcrumb_links", ".breadcrumb__link")
+
+        # Wait for full DOM hydration: breadcrumb + header (flag/crest live here)
+        hydrated = False
         try:
-            await page.wait_for_selector(breadcrumb_sel, timeout=15000)
+            await page.wait_for_selector(breadcrumb_sel, timeout=10000)
+            # Also wait for the league header block where flags/crests render
+            try:
+                await page.wait_for_selector(
+                    ".heading, .tournamentHeader, [class*='heading']",
+                    timeout=5000,
+                )
+            except Exception:
+                pass  # Header not always present, breadcrumb is enough
+            hydrated = True
         except Exception:
-            await asyncio.sleep(2)
+            pass
+
+        if not hydrated:
+            await asyncio.sleep(3)
 
         fs_league_id = await page.evaluate(EXTRACT_FS_LEAGUE_ID_JS)
         if fs_league_id:
