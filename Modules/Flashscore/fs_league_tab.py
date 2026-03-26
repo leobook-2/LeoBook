@@ -65,7 +65,7 @@ async def extract_tab(
     row_sel: str = tab_selectors.get("match_row", "[id^='g_1_']")
 
     try:
-        resp = await page.goto(url, wait_until="networkidle", timeout=60000)
+        resp = await page.goto(url, wait_until="domcontentloaded", timeout=60000)
         await fs_universal_popup_dismissal(page)
         if resp and resp.status >= 400:
             print(f"    [{tab.upper()}] HTTP {resp.status} — not available")
@@ -305,7 +305,7 @@ async def enrich_single_league(
 
     page = await context.new_page()
     try:
-        await page.goto(url, wait_until="networkidle", timeout=60000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
         await fs_universal_popup_dismissal(page)
 
         selectors = selector_mgr.get_all_selectors_for_context(CONTEXT_LEAGUE)
