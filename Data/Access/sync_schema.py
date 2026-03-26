@@ -54,6 +54,9 @@ SUPABASE_SCHEMA = {
             league_stage TEXT, match_status TEXT, season TEXT,
             home_crest TEXT, away_crest TEXT, match_link TEXT,
             country_league TEXT,
+            home_red_cards INTEGER DEFAULT 0,
+            away_red_cards INTEGER DEFAULT 0,
+            winner TEXT,
             last_updated TIMESTAMPTZ DEFAULT now()
         );""",
     'teams': """

@@ -156,6 +156,15 @@ async def extract_tab(
             elif "CANC"  in eu: extra = "Canc"
             elif "ABN" in eu or "ABAN" in eu: extra = "Abn"
 
+        # F3: Winner — prefer JS bold-class detection, fall back to score comparison
+        winner = m.get("winner")
+        if not winner and status == "finished":
+            hs, aws = m.get("home_score"), m.get("away_score")
+            if hs is not None and aws is not None:
+                if hs > aws:   winner = "home"
+                elif aws > hs: winner = "away"
+                else:          winner = "draw"
+
         fixture_rows.append({
             "fixture_id":     m.get("fixture_id", ""),
             "date":           match_date_str,
@@ -167,6 +176,9 @@ async def extract_tab(
             "away_team_name": away_name,
             "home_score":     m.get("home_score"),
             "away_score":     m.get("away_score"),
+            "home_red_cards": m.get("home_red_cards", 0) or 0,
+            "away_red_cards": m.get("away_red_cards", 0) or 0,
+            "winner":         winner,
             "extra":          extra,
             "league_stage":   m.get("league_stage", ""),
             "match_status":   status,

@@ -99,13 +99,30 @@ EXTRACT_MATCHES_JS = r"""(ctx) => {
         const awayScoreEl = row.querySelector(s.match_score_away);
         const homeScore = homeScoreEl && homeScoreEl.innerText.trim() !== '-' ? parseInt(homeScoreEl.innerText.trim()) : null;
         const awayScore = awayScoreEl && awayScoreEl.innerText.trim() !== '-' ? parseInt(awayScoreEl.innerText.trim()) : null;
+        // F2: Red card count per side
+        const homeRedCards = homeEl ? homeEl.querySelectorAll('[data-testid="wcl-icon-incidents-red-card"]').length : 0;
+        const awayRedCards = awayEl ? awayEl.querySelectorAll('[data-testid="wcl-icon-incidents-red-card"]').length : 0;
+        // F3: Winner detection from bold class on name span
+        const homeNameSpan = homeEl ? homeEl.querySelector(s.participant_name) : null;
+        const awayNameSpan = awayEl ? awayEl.querySelector(s.participant_name) : null;
+        const homeBold = homeNameSpan ? homeNameSpan.className.includes('wcl-bold') : false;
+        const awayBold = awayNameSpan ? awayNameSpan.className.includes('wcl-bold') : false;
+        let winner = null;
+        if (homeBold && !awayBold) winner = 'home';
+        else if (awayBold && !homeBold) winner = 'away';
+        else if (homeScore !== null && awayScore !== null && homeScore === awayScore) winner = 'draw';
+        // F4: Scheduled class detection
+        const isScheduled = row.classList.contains('event__match--scheduled');
         let matchStatus = '';
-        const stageEl = row.querySelector(`${s.match_stage_block}, ${s.match_stage}`);
-        if (stageEl && !stageEl.closest(s.match_time)) matchStatus = stageEl.innerText.trim();
-        else if (homeScoreEl) {
-            const state = homeScoreEl.getAttribute('data-state') || '';
-            const isFinal = homeScoreEl.className.includes('isFinal') || homeScoreEl.className.includes('Final');
-            if (state === 'final' || isFinal || homeScore !== null) matchStatus = 'FT';
+        if (isScheduled) { matchStatus = 'scheduled'; }
+        else {
+            const stageEl = row.querySelector(`${s.match_stage_block}, ${s.match_stage}`);
+            if (stageEl && !stageEl.closest(s.match_time)) matchStatus = stageEl.innerText.trim();
+            else if (homeScoreEl) {
+                const state = homeScoreEl.getAttribute('data-state') || '';
+                const isFinal = homeScoreEl.className.includes('isFinal') || homeScoreEl.className.includes('Final');
+                if (state === 'final' || isFinal || homeScore !== null) matchStatus = 'FT';
+            }
         }
         const homeImg = row.querySelector(s.match_logo_home);
         const awayImg = row.querySelector(s.match_logo_away);
@@ -151,6 +168,8 @@ EXTRACT_MATCHES_JS = r"""(ctx) => {
             home_team_id: homeTeamId, away_team_id: awayTeamId,
             home_team_url: homeTeamUrl, away_team_url: awayTeamUrl,
             home_score: homeScore, away_score: awayScore,
+            home_red_cards: homeRedCards, away_red_cards: awayRedCards,
+            winner: winner,
             match_status: matchStatus, home_crest_url: homeCrest, away_crest_url: awayCrest,
             league_stage: currentRound, extra: extraTag || null,
             url: `/match/${fixtureId}/#/match-summary`, match_link: mLink || ''
