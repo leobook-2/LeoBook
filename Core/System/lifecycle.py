@@ -194,8 +194,10 @@ Usage Examples:
                        help='Extract Flashscore league pages -> SQLite')
     parser.add_argument('--reset-leagues', action='store_true',
                        help='Reset all leagues to unprocessed (use with --enrich-leagues)')
+    parser.add_argument('--reload', action='store_true',
+                       help='Re-enrich ALL leagues regardless of gap scan (use with --enrich-leagues)')
     parser.add_argument('--refresh', '--refresh-leagues', action='store_true', dest='refresh_leagues',
-                       help='Re-extract all leagues including already processed (use with --enrich-leagues)')
+                       help='Re-enrich leagues with fixtures in the last/next 7 days (use with --enrich-leagues)')
     parser.add_argument('--seasons', type=int, default=0, metavar='N',
                        help='Number of past seasons to extract (use with --enrich-leagues)')
     parser.add_argument('--season', type=int, default=None, metavar='N',

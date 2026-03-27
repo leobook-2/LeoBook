@@ -37,7 +37,7 @@ class _CategoryBarState extends State<CategoryBar> {
   }
 
   void _scrollToIndex(int index) {
-    if (!_scrollController.hasClients) return;
+    if (!mounted || !_scrollController.hasClients) return;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final itemExtent = Responsive.sp(context, 56);
     final offset = (index * itemExtent) - (screenWidth / 2) + (itemExtent / 2);
@@ -58,6 +58,7 @@ class _CategoryBarState extends State<CategoryBar> {
   Widget build(BuildContext context) {
     return BlocConsumer<HomeCubit, HomeState>(
       listener: (context, state) {
+        if (!context.mounted) return;
         if (state is HomeLoaded) {
           final now = DateTime.now();
           final start = DateTime(now.year, now.month, now.day)

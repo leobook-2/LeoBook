@@ -76,16 +76,18 @@ class GapScanner:
     # Columns whose values must start with "http" to be considered valid.
     _URL_REQUIRED_COLUMNS: Set[str] = {
         "leagues.crest",
+        "leagues.region_flag",
+        "leagues.region_url",
         "teams.crest",
         "schedules.home_crest",
         "schedules.away_crest",
-        "leagues.region_url",
     }
 
     # These schedule columns are allowed to be NULL for scheduled/upcoming fixtures.
     _NULLABLE_FOR_SCHEDULED: Set[str] = {
         "schedules.home_score",
         "schedules.away_score",
+        "schedules.winner",
         "schedules.time",
     }
 

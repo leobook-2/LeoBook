@@ -77,7 +77,7 @@
         "match_logo_away": ".event__logo--away img, .event__awayParticipant img",
         "match_link": ".eventRowLink, a.eventRowLink, a[href*='/match/']",
         "event_row_link": ".eventRowLink, a.eventRowLink",
-        "show_more_matches": ".event__more, a.event__more--static",
+        "show_more_matches": "button[data-testid='wcl-buttonLink'], .wcl-footer__button_OauhJ, a.event__more--static, .event__more",
         "home_participant": ".event__homeParticipant",
         "away_participant": ".event__awayParticipant",
         "participant_name": "[class*='wcl-name'], .event__participant--name",

@@ -469,6 +469,35 @@ def get_stale_leagues(conn: sqlite3.Connection, days: int = 7) -> List[Dict[str,
     return [dict(r) for r in rows]
 
 
+def get_all_leagues(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    """Return ALL leagues that have a Flashscore URL (for --reload)."""
+    rows = conn.execute(
+        """SELECT * FROM leagues
+           WHERE url IS NOT NULL AND url != ''
+           ORDER BY id"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_active_leagues(conn: sqlite3.Connection, days: int = 7) -> List[Dict[str, Any]]:
+    """Return leagues that have fixtures within ±N days of today (for --refresh).
+
+    Finds distinct league_ids from the schedules table where the match date
+    falls in [today - days, today + days], then returns the full league rows.
+    """
+    rows = conn.execute(
+        """SELECT DISTINCT l.*
+           FROM leagues l
+           INNER JOIN schedules s ON s.league_id = l.league_id
+           WHERE l.url IS NOT NULL AND l.url != ''
+             AND s.date >= date('now', ? || ' days')
+             AND s.date <= date('now', '+' || ? || ' days')
+           ORDER BY l.id""",
+        (f"-{days}", str(days))
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ---------------------------------------------------------------------------
 # Team operations
 # ---------------------------------------------------------------------------

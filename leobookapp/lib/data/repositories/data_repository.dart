@@ -76,25 +76,52 @@ class DataRepository {
     }).toList();
   }
 
+  /// Paginated fetch: retrieves ALL rows for a date, bypassing the
+  /// PostgREST 1,000-row default cap. Uses deterministic ordering
+  /// (fixture_id ASC) and a 20-page safety cap (20,000 rows max).
+  Future<List<dynamic>> _fetchAllRowsForDate(String dateStr) async {
+    const pageSize = 1000;
+    const maxPages = 20; // Safety: 20 × 1000 = 20k max
+
+    final List<dynamic> allRows = [];
+    int from = 0;
+    for (int page = 0; page < maxPages; page++) {
+      final pageRows = await _supabase
+          .from('schedules')
+          .select()
+          .eq('date', dateStr)
+          .order('fixture_id', ascending: true)
+          .range(from, from + pageSize - 1);
+      final rows = pageRows as List;
+      allRows.addAll(rows);
+      if (rows.length < pageSize) break; // Last page
+      from += pageSize;
+    }
+    return allRows;
+  }
+
   Future<List<MatchModel>> fetchMatches({DateTime? date}) async {
     try {
       // Primary source: schedules (always populated).
       // Predictions table is optional enrichment.
-      var query = _supabase.from('schedules').select();
-
       String? dateStr;
       if (date != null) {
         dateStr =
             "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
-        query = query.eq('date', dateStr);
       }
 
-      final ordered = query.order('date', ascending: false);
-      final response = date != null
-          ? await ordered
-          : await ordered.limit(300);
-
-      final scheduleRows = response as List;
+      // Paginated fetch for a specific date; capped fetch otherwise
+      final List<dynamic> scheduleRows;
+      if (dateStr != null) {
+        scheduleRows = await _fetchAllRowsForDate(dateStr);
+      } else {
+        final response = await _supabase
+            .from('schedules')
+            .select()
+            .order('date', ascending: false)
+            .limit(300);
+        scheduleRows = response as List;
+      }
 
       // Always enrich with predictions
       final predMap = dateStr != null
@@ -107,6 +134,13 @@ class DataRepository {
             );
 
       final matches = _mergeSchedulesWithPredictions(scheduleRows, predMap);
+
+      // Stable in-memory sort by match time for display order
+      matches.sort((a, b) {
+        final timeCompare = a.time.compareTo(b.time);
+        if (timeCompare != 0) return timeCompare;
+        return a.fixtureId.compareTo(b.fixtureId); // Deterministic tie-breaker
+      });
 
       // Cache a small subset locally
       try {
@@ -247,7 +281,7 @@ class DataRepository {
   Future<List<StandingModel>> fetchStandings({required String leagueId, String? season}) async {
     try {
       var query = _supabase
-          .from('computed_standings')
+          .from('computed_standings_mv')
           .select()
           .eq('league_id', leagueId);
       
@@ -315,11 +349,11 @@ class DataRepository {
 
   Future<Map<String, String>> fetchTeamCrests() async {
     try {
-      final response = await _supabase.from('teams').select('name, crest');
+      final response = await _supabase.from('teams').select('team_name, team_crest');
       final Map<String, String> crests = {};
       for (var row in (response as List)) {
-        if (row['name'] != null && row['crest'] != null) {
-          crests[row['name'].toString()] = row['crest'].toString();
+        if (row['team_name'] != null && row['team_crest'] != null) {
+          crests[row['team_name'].toString()] = row['team_crest'].toString();
         }
       }
       return crests;
@@ -338,7 +372,7 @@ class DataRepository {
   Future<StandingModel?> getTeamStanding(String teamName) async {
     try {
       final response = await _supabase
-          .from('computed_standings')
+          .from('computed_standings_mv')
           .select()
           .eq('team_name', teamName)
           .maybeSingle();
@@ -430,11 +464,11 @@ class DataRepository {
 
 
   Stream<Map<String, String>> watchTeamCrestUpdates() {
-    return _supabase.from('teams').stream(primaryKey: ['name']).map((rows) {
+    return _supabase.from('teams').stream(primaryKey: ['team_id']).map((rows) {
       final Map<String, String> crests = {};
       for (var row in rows) {
-        if (row['name'] != null && row['crest'] != null) {
-          crests[row['name'].toString()] = row['crest'].toString();
+        if (row['team_name'] != null && row['team_crest'] != null) {
+          crests[row['team_name'].toString()] = row['team_crest'].toString();
         }
       }
       return crests;
@@ -463,7 +497,7 @@ class DataRepository {
   Stream<List<Map<String, dynamic>>> watchMatchOdds(String fixtureId) {
     return _supabase
         .from('match_odds')
-        .stream(primaryKey: ['fixture_id', 'market_id', 'exact_outcome'])
+        .stream(primaryKey: ['fixture_id', 'market_id', 'exact_outcome', 'line'])
         .eq('fixture_id', fixtureId)
         .map((rows) => List<Map<String, dynamic>>.from(rows));
   }
@@ -510,18 +544,38 @@ class DataRepository {
     }
   }
 
-  Future<List<MatchModel>> fetchFixturesByLeague(String leagueId,
+  /// Paginated fetch for all fixtures in a league+season, bypassing the
+  /// PostgREST 1,000-row cap. Same pattern as _fetchAllRowsForDate.
+  Future<List<dynamic>> _fetchAllRowsForLeague(String leagueId,
       {String? season}) async {
-    try {
-      var query =
-          _supabase.from('schedules').select().eq('league_id', leagueId);
+    const pageSize = 1000;
+    const maxPages = 20;
 
+    final List<dynamic> allRows = [];
+    int from = 0;
+    for (int page = 0; page < maxPages; page++) {
+      var query = _supabase
+          .from('schedules')
+          .select()
+          .eq('league_id', leagueId);
       if (season != null) {
         query = query.eq('season', season);
       }
+      final pageRows = await query
+          .order('fixture_id', ascending: true)
+          .range(from, from + pageSize - 1);
+      final rows = pageRows as List;
+      allRows.addAll(rows);
+      if (rows.length < pageSize) break;
+      from += pageSize;
+    }
+    return allRows;
+  }
 
-      final response = await query.order('date', ascending: false).limit(500);
-      final rows = response as List;
+  Future<List<MatchModel>> fetchFixturesByLeague(String leagueId,
+      {String? season}) async {
+    try {
+      final rows = await _fetchAllRowsForLeague(leagueId, season: season);
 
       // Enrich with predictions
       final fixtureIds = rows
@@ -530,7 +584,18 @@ class DataRepository {
           .toList();
       final predMap = await _fetchPredictionMap(fixtureIds: fixtureIds);
 
-      return _mergeSchedulesWithPredictions(rows, predMap);
+      final matches = _mergeSchedulesWithPredictions(rows, predMap);
+
+      // Stable sort: match_time ASC, fixture_id ASC
+      matches.sort((a, b) {
+        final dateCompare = a.date.compareTo(b.date);
+        if (dateCompare != 0) return dateCompare;
+        final timeCompare = a.time.compareTo(b.time);
+        if (timeCompare != 0) return timeCompare;
+        return a.fixtureId.compareTo(b.fixtureId);
+      });
+
+      return matches;
     } catch (e) {
       debugPrint("DataRepository Error (Fixtures by League): $e");
       return [];

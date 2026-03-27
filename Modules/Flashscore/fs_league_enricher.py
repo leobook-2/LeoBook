@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from Data.Access.league_db import (
     init_db, get_unprocessed_leagues, get_stale_leagues,
+    get_all_leagues, get_active_leagues,
 )
 from Data.Access.gap_scanner import GapScanner
 
@@ -42,6 +43,7 @@ async def main(
     limit: Optional[int] = None,
     offset: int = 0,
     reset: bool = False,
+    reload: bool = False,
     num_seasons: int = 0,
     all_seasons: bool = False,
     weekly: bool = False,
@@ -81,9 +83,13 @@ async def main(
         leagues   = get_unprocessed_leagues(conn)
         scan_mode = "FULL RESET"
 
+    elif reload:
+        leagues   = get_all_leagues(conn)
+        scan_mode = "FULL RELOAD (all leagues)"
+
     elif refresh or weekly:
-        leagues   = get_stale_leagues(conn, days=7)
-        scan_mode = "STALE REFRESH (>7 days)"
+        leagues   = get_active_leagues(conn, days=7)
+        scan_mode = f"ACTIVE REFRESH (fixtures ±7 days, {len(leagues) if 'leagues' in dir() else '?'} leagues)"
 
     else:
         scan_mode = "COLUMN GAP SCAN"
@@ -357,7 +363,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--limit",       type=str, default=None, metavar="N or START-END")
     parser.add_argument("--reset",       action="store_true")
-    parser.add_argument("--refresh",     action="store_true")
+    parser.add_argument("--reload",      action="store_true",
+                        help="Re-enrich ALL leagues regardless of gap scan")
+    parser.add_argument("--refresh",     action="store_true",
+                        help="Re-enrich leagues with fixtures in the last/next 7 days")
     parser.add_argument("--seasons",     type=int, default=0, metavar="N")
     parser.add_argument("--season",      type=int, default=None, metavar="N")
     parser.add_argument("--all-seasons", action="store_true")
@@ -379,6 +388,7 @@ if __name__ == "__main__":
 
     asyncio.run(main(
         limit=limit_count, offset=offset, reset=args.reset,
+        reload=args.reload,
         num_seasons=args.seasons, all_seasons=args.all_seasons,
         target_season=args.season, refresh=args.refresh,
         scan_only=args.scan_only, min_severity=args.min_severity,

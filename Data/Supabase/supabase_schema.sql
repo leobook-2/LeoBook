@@ -617,8 +617,9 @@ WITH all_matches AS (
 ),
 standings AS (
     SELECT
-        league_id, season, team_id,
-        MAX(team_name) AS team_name,
+        league_id, season,
+        MIN(team_id) AS team_id,
+        team_name,
         COUNT(*)::INTEGER AS played,
         SUM(CASE WHEN gf > ga THEN 1 ELSE 0 END)::INTEGER AS won,
         SUM(CASE WHEN gf = ga THEN 1 ELSE 0 END)::INTEGER AS drawn,
@@ -628,7 +629,7 @@ standings AS (
         (SUM(gf) - SUM(ga))::INTEGER AS goal_difference,
         SUM(CASE WHEN gf > ga THEN 3 WHEN gf = ga THEN 1 ELSE 0 END)::INTEGER AS points
     FROM all_matches
-    GROUP BY league_id, season, team_id
+    GROUP BY league_id, season, team_name
 )
 SELECT
     *,
@@ -639,6 +640,59 @@ SELECT
 FROM standings;
 
 GRANT SELECT ON public.computed_standings TO anon, authenticated, service_role;
+
+-- 9b. MATERIALIZED VIEW (v6.2 — fixed: group by team_name to merge fragmented team_ids)
+-- The pipeline assigns different team_id values for the same team across matches,
+-- causing duplicate standings rows. Grouping by team_name merges them correctly.
+-- Refresh every 10 minutes via pg_cron (or manually after pipeline writes).
+DROP MATERIALIZED VIEW IF EXISTS public.computed_standings_mv;
+CREATE MATERIALIZED VIEW public.computed_standings_mv AS
+WITH all_matches AS (
+    SELECT league_id, season,
+        home_team_id AS team_id, home_team AS team_name,
+        home_score::INTEGER AS gf, away_score::INTEGER AS ga
+    FROM public.schedules
+    WHERE home_score IS NOT NULL AND away_score IS NOT NULL
+      AND match_status = 'finished'
+    UNION ALL
+    SELECT league_id, season,
+        away_team_id AS team_id, away_team AS team_name,
+        away_score::INTEGER AS gf, home_score::INTEGER AS ga
+    FROM public.schedules
+    WHERE home_score IS NOT NULL AND away_score IS NOT NULL
+      AND match_status = 'finished'
+),
+standings AS (
+    SELECT league_id, season,
+        MIN(team_id) AS team_id,
+        team_name,
+        COUNT(*)::INTEGER AS played,
+        SUM(CASE WHEN gf > ga THEN 1 ELSE 0 END)::INTEGER AS won,
+        SUM(CASE WHEN gf = ga THEN 1 ELSE 0 END)::INTEGER AS drawn,
+        SUM(CASE WHEN gf < ga THEN 1 ELSE 0 END)::INTEGER AS lost,
+        SUM(gf)::INTEGER AS goals_for,
+        SUM(ga)::INTEGER AS goals_against,
+        (SUM(gf) - SUM(ga))::INTEGER AS goal_difference,
+        SUM(CASE WHEN gf > ga THEN 3 WHEN gf = ga THEN 1 ELSE 0 END)::INTEGER AS points
+    FROM all_matches
+    GROUP BY league_id, season, team_name
+)
+SELECT *,
+    ROW_NUMBER() OVER (
+        PARTITION BY league_id, season
+        ORDER BY points DESC, goal_difference DESC, goals_for DESC, team_name
+    )::INTEGER AS position
+FROM standings;
+
+CREATE INDEX IF NOT EXISTS computed_standings_mv_league_season_idx
+    ON public.computed_standings_mv (league_id, season);
+
+GRANT SELECT ON public.computed_standings_mv TO anon, authenticated, service_role;
+
+-- 9c. Partial index on schedules for standings computation (speeds MV refresh)
+CREATE INDEX IF NOT EXISTS idx_schedules_league_finished
+    ON public.schedules (league_id, season, match_status)
+    WHERE match_status = 'finished';
 
 -- =============================================================================
 -- 10. UTILITIES  (v5.0)
@@ -669,6 +723,10 @@ GRANT EXECUTE ON FUNCTION public.normalize_team_name(TEXT) TO service_role, anon
 -- 10b: Performance indexes
 CREATE INDEX IF NOT EXISTS idx_schedules_league_date ON public.schedules (league_id, date);
 CREATE INDEX IF NOT EXISTS idx_schedules_date ON public.schedules (date);
+CREATE INDEX IF NOT EXISTS idx_predictions_date ON public.predictions (date);
+CREATE INDEX IF NOT EXISTS idx_predictions_recommendation_score ON public.predictions (recommendation_score DESC) WHERE recommendation_score IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_schedules_home_team ON public.schedules (home_team);
+CREATE INDEX IF NOT EXISTS idx_schedules_away_team ON public.schedules (away_team);
 
 -- =============================================================================
 -- Schema v5.0 complete.
