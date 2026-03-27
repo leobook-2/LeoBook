@@ -84,25 +84,51 @@ if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
   exit 1
 fi
 
-# Upload APK (as LeoBook-latest.apk — stable URL)
-echo "📤 Uploading $LATEST_NAME to Supabase..."
-curl -s -X POST \
-  "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${LATEST_NAME}" \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY:-missing}" \
-  -H "Content-Type: application/vnd.android.package-archive" \
-  -H "x-upsert: true" \
-  --data-binary "@$APK_OUTPUT/$LATEST_NAME" \
-  -o /dev/null -w "HTTP %{http_code}\n"
+# ── Ensure bucket exists (auto-create if missing) ─────────────────────────
+echo "🪣 Ensuring bucket '$BUCKET' exists..."
+BUCKET_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
+  "${SUPABASE_URL}/storage/v1/bucket/${BUCKET}" \
+  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")
 
-# Also upload versioned copy for archive
-echo "📤 Uploading $APK_NAME to Supabase..."
-curl -s -X POST \
-  "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${APK_NAME}" \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY:-missing}" \
-  -H "Content-Type: application/vnd.android.package-archive" \
-  -H "x-upsert: true" \
-  --data-binary "@$APK_OUTPUT/$APK_NAME" \
-  -o /dev/null -w "HTTP %{http_code}\n"
+if [ "$BUCKET_CHECK" != "200" ]; then
+  echo "   Creating bucket '$BUCKET'..."
+  CREATE_RESP=$(curl -s -X POST \
+    "${SUPABASE_URL}/storage/v1/bucket" \
+    -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "{\"id\": \"${BUCKET}\", \"name\": \"${BUCKET}\", \"public\": true}")
+  echo "   $CREATE_RESP"
+else
+  echo "   ✅ Bucket exists"
+fi
+
+# ── Upload helper ─────────────────────────────────────────────────────────
+upload_file() {
+  local FILE_PATH="$1"
+  local DEST_NAME="$2"
+  local CONTENT_TYPE="$3"
+  local RESP
+  RESP=$(curl -s -w "\n%{http_code}" -X POST \
+    "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${DEST_NAME}" \
+    -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "Content-Type: ${CONTENT_TYPE}" \
+    -H "x-upsert: true" \
+    --data-binary "@${FILE_PATH}")
+  local HTTP_CODE
+  HTTP_CODE=$(echo "$RESP" | tail -1)
+  local BODY
+  BODY=$(echo "$RESP" | sed '$d')
+  if [ "$HTTP_CODE" = "200" ]; then
+    echo "   ✅ $DEST_NAME → HTTP $HTTP_CODE"
+  else
+    echo "   ❌ $DEST_NAME → HTTP $HTTP_CODE: $BODY"
+  fi
+}
+
+# Upload APK (as LeoBook-latest.apk — stable URL)
+echo "📤 Uploading APKs to Supabase..."
+upload_file "$APK_OUTPUT/$LATEST_NAME" "$LATEST_NAME" "application/vnd.android.package-archive"
+upload_file "$APK_OUTPUT/$APK_NAME" "$APK_NAME" "application/vnd.android.package-archive"
 
 # ── Upload metadata.json ──────────────────────────────────────────────────
 METADATA_FILE="$APK_OUTPUT/metadata.json"
@@ -115,16 +141,11 @@ cat > "$METADATA_FILE" << EOF
 EOF
 
 echo "📤 Uploading metadata.json..."
-curl -s -X POST \
-  "${SUPABASE_URL}/storage/v1/object/${BUCKET}/metadata.json" \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY:-missing}" \
-  -H "Content-Type: application/json" \
-  -H "x-upsert: true" \
-  --data-binary "@$METADATA_FILE" \
-  -o /dev/null -w "HTTP %{http_code}\n"
+upload_file "$METADATA_FILE" "metadata.json" "application/json"
 
 echo ""
 echo "✅ Deploy complete!"
 echo "   Version:  $VERSION"
 echo "   APK URL:  $PUBLIC_URL"
 echo "   Metadata: ${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/metadata.json"
+
