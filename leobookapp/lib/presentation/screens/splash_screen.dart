@@ -72,14 +72,25 @@ class _SplashScreenState extends State<SplashScreen>
       body: Center(
         child: FadeTransition(
           opacity: _fadeIn,
-          child: Text(
-            'LEOBOOK',
-            style: GoogleFonts.lexend(
-              fontSize: 36,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              letterSpacing: 6,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets/icon/icon.png',
+                width: 120,
+                height: 120,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'LEOBOOK',
+                style: GoogleFonts.lexend(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 6,
+                ),
+              ),
+            ],
           ),
         ),
       ),

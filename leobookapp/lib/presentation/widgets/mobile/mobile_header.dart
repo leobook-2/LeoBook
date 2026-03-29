@@ -4,10 +4,12 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/core/constants/responsive_constants.dart';
 import 'package:leobookapp/core/theme/liquid_glass_theme.dart';
 import 'package:leobookapp/logic/cubit/search_cubit.dart';
+import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import '../../screens/search_screen.dart';
 
 class MobileHeader extends StatelessWidget {
@@ -48,14 +50,49 @@ class MobileHeader extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    "LEOBOOK",
-                    style: TextStyle(
-                      fontSize: Responsive.sp(context, 12),
-                      fontWeight: FontWeight.w900,
-                      color: isDark ? Colors.white : AppColors.textDark,
-                      letterSpacing: 2.0,
-                    ),
+                  // Brand + Super badge
+                  BlocBuilder<UserCubit, UserState>(
+                    builder: (context, state) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            "LEOBOOK",
+                            style: TextStyle(
+                              fontSize: Responsive.sp(context, 12),
+                              fontWeight: FontWeight.w900,
+                              color: isDark ? Colors.white : AppColors.textDark,
+                              letterSpacing: 2.0,
+                            ),
+                          ),
+                          if (state.user.isSuperLeoBook) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppColors.primary,
+                                    AppColors.primaryLight
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                'SUPER',
+                                style: GoogleFonts.lexend(
+                                  fontSize: 7,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    },
                   ),
                   if (currentIndex != 3)
                     GestureDetector(
@@ -95,3 +132,4 @@ class MobileHeader extends StatelessWidget {
     );
   }
 }
+
