@@ -3,10 +3,10 @@
 //
 // Classes: AuthRepository
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/foundation.dart';
 
 class AuthRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -22,8 +22,44 @@ class AuthRepository {
 
   // ─── Google Sign-In ──────────────────────────────────────────────
 
-  /// Sign in with Google via native flow + Supabase ID token exchange.
+  /// Sign in with Google.
+  /// Web: Uses Supabase OAuth redirect (no native google_sign_in).
+  /// Mobile: Uses native google_sign_in + Supabase ID token exchange.
   Future<AuthResponse> signInWithGoogle() async {
+    if (kIsWeb) {
+      return _signInWithGoogleWeb();
+    }
+    return _signInWithGoogleNative();
+  }
+
+  /// Web: Supabase handles the full OAuth redirect flow.
+  Future<AuthResponse> _signInWithGoogleWeb() async {
+    try {
+      final success = await _supabase.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: kIsWeb ? Uri.base.origin : null,
+      );
+      if (!success) {
+        throw 'Google OAuth redirect failed.';
+      }
+      // After redirect, Supabase auto-signs in via authStateChanges.
+      // Return a placeholder — the real auth state comes from the listener.
+      // Wait briefly for the session to populate after redirect.
+      await Future.delayed(const Duration(seconds: 1));
+      final session = _supabase.auth.currentSession;
+      if (session != null) {
+        return AuthResponse(session: session, user: session.user);
+      }
+      // If no session yet, the redirect hasn't completed — caller handles via listener.
+      return AuthResponse(session: null, user: null);
+    } catch (e) {
+      debugPrint('[AuthRepository] Google OAuth (web) error: $e');
+      rethrow;
+    }
+  }
+
+  /// Mobile: Native google_sign_in → ID token → Supabase exchange.
+  Future<AuthResponse> _signInWithGoogleNative() async {
     try {
       final webClientId = dotenv.env['GOOGLE_WEB_CLIENT_ID'] ?? '';
       final iosClientId = dotenv.env['GOOGLE_IOS_CLIENT_ID'] ?? '';
@@ -52,7 +88,7 @@ class AuthRepository {
         accessToken: accessToken,
       );
     } catch (e) {
-      debugPrint('[AuthRepository] Google Sign-In error: $e');
+      debugPrint('[AuthRepository] Google Sign-In (native) error: $e');
       rethrow;
     }
   }
@@ -116,13 +152,16 @@ class AuthRepository {
   /// Sign out from both Supabase and Google.
   Future<void> signOut() async {
     await _supabase.auth.signOut();
-    try {
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-      if (await googleSignIn.isSignedIn()) {
-        await googleSignIn.signOut();
+    if (!kIsWeb) {
+      try {
+        final GoogleSignIn googleSignIn = GoogleSignIn();
+        if (await googleSignIn.isSignedIn()) {
+          await googleSignIn.signOut();
+        }
+      } catch (_) {
+        // Google sign out failure is non-critical
       }
-    } catch (_) {
-      // Google sign out failure is non-critical
     }
   }
 }
+

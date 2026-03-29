@@ -59,6 +59,10 @@ class UserCubit extends Cubit<UserState> {
         emit(UserAuthenticated(
           user: UserModel.fromSupabaseUser(response.user!),
         ));
+      } else if (kIsWeb) {
+        // On web, OAuth redirects the page — session arrives via authStateChanges.
+        // Reset to initial so the UI isn't stuck on loading.
+        emit(UserInitial(user: state.user));
       } else {
         emit(UserError(user: state.user, message: 'Google sign-in failed.'));
       }

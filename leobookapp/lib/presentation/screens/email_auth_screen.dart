@@ -30,18 +30,37 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
     super.dispose();
   }
 
+  /// Validate password meets Supabase's strict policy.
+  String? _validatePassword(String password) {
+    final missing = <String>[];
+    if (password.length < 8) missing.add('at least 8 characters');
+    if (!password.contains(RegExp(r'[a-z]'))) missing.add('a lowercase letter');
+    if (!password.contains(RegExp(r'[A-Z]'))) missing.add('an uppercase letter');
+    if (!password.contains(RegExp(r'[0-9]'))) missing.add('a digit');
+    if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/~`]'))) {
+      missing.add('a special character');
+    }
+    if (missing.isEmpty) return null;
+    return 'Password needs: ${missing.join(', ')}';
+  }
+
   void _submit() {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     if (email.isEmpty || password.isEmpty) return;
-    if (password.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Password must be at least 6 characters'),
-          backgroundColor: AppColors.liveRed,
-        ),
-      );
-      return;
+
+    // Only enforce strict password rules on sign-up
+    if (_isSignUp) {
+      final error = _validatePassword(password);
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: AppColors.liveRed,
+          ),
+        );
+        return;
+      }
     }
 
     final cubit = context.read<UserCubit>();
