@@ -32,7 +32,7 @@ class UpdateService extends ChangeNotifier {
   Timer? _timer;
 
   /// Current app version — matches pubspec.yaml version field.
-  static const String appVersion = '9.5.0';
+  static const String appVersion = '9.5.1';
 
   /// Start periodic checking (every [intervalSeconds]).
   void startPeriodicCheck({int intervalSeconds = 3}) {
