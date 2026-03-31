@@ -442,37 +442,42 @@ async def _league_worker(
 
             all_page_matches = await validate_match_data(all_page_matches)
 
-            # Pair each FS fixture with its page candidates — no resolution yet.
-            extraction_pairs = []
+            # ── Deterministic Resolution (Instant) ─────────────────────────
+            resolved_matches = []
+            
             for fs_fix in fs_fixtures:
-                home = (fs_fix.get('home_team_name') or '').strip()
-                away = (fs_fix.get('away_team_name') or '').strip()
-                fix_date = fs_fix.get('date', '')
+                # 1. Deterministic Match Look-up (In-memory)
+                match_row, score, method = await matcher.resolve_deterministic(
+                    fs_fix, all_page_matches
+                )
+                
+                if match_row:
+                    # 2. Strict Data Contract Enforcement
+                    try:
+                        # Normalize keys for contract
+                        match_row['home'] = match_row.get('home', match_row.get('home_team'))
+                        match_row['away'] = match_row.get('away', match_row.get('away_team'))
+                        FBDataContract.validate_match(match_row)
+                    except DataContractViolation as dcv:
+                        print(f"    [Contract] {league_name}: skipping fixture due to violation: {dcv}")
+                        continue
 
-                if not home or not away:
-                    continue
+                    # 3. Enrich with Flashscore linkage
+                    match_row["fixture_id"] = fs_fix.get("fixture_id", "")
+                    match_row["home_id"] = fs_fix.get("home_team_id") or fs_fix.get("home_id")
+                    match_row["away_id"] = fs_fix.get("away_team_id") or fs_fix.get("away_id")
+                    match_row["resolution_method"] = method
+                    
+                    # 4. Instant Perspective: Save to local DB immediately (Atomic Batch: NO commit)
+                    save_site_matches([match_row], commit=False)
+                    resolved_matches.append(match_row)
 
-                # Normalise key names before passing to the resolver.
-                # extract_league_matches() returns dicts with 'home'/'away' keys,
-                # but FixtureResolver.resolve() reads 'home_team'/'away_team'.
-                # Adding both aliases here means neither side needs to change.
-                raw_candidates = [
-                    m for m in all_page_matches
-                    if not fix_date or m.get('date', '') == fix_date
-                ] or all_page_matches
+            if resolved_matches:
+                print(f"    ✓ {league_name}: {len(resolved_matches)}/{len(fs_fixtures)} fixtures resolved and saved.")
+            else:
+                print(f"    ! {league_name}: 0/{len(fs_fixtures)} fixtures resolved.")
 
-                candidates = [
-                    {**m, 'home_team': m.get('home', ''), 'away_team': m.get('away', '')}
-                    for m in raw_candidates
-                ]
-
-                extraction_pairs.append({
-                    'fs_fix': fs_fix,
-                    'candidates': candidates,
-                    'league_name': league_name,
-                })
-
-            return extraction_pairs
+            return resolved_matches
 
         except Exception as e:
             print(f"  [League] ERROR {league_name}: {e}")
@@ -640,50 +645,20 @@ async def run_odds_harvesting(playwright: Playwright):
 
                 batch_extraction_results = await asyncio.gather(*league_tasks, return_exceptions=True)
                 
-                # Flatten pairs for this batch
-                batch_pairs: List[Dict] = []
+                # 6. Collect resolved matches from batch tasks
+                batch_resolved: List[Dict] = []
                 for res in batch_extraction_results:
                     if isinstance(res, list):
-                        batch_pairs.extend(res)
+                        batch_resolved.extend(res)
                     elif isinstance(res, Exception):
-                        print(f"    [Batch {batch_num}] Extraction task failed: {res}")
+                        print(f"    [Batch {batch_num}] League worker failed: {res}")
 
-                if not batch_pairs:
-                    print(f"    [Batch {batch_num}] No fixtures extracted.")
-                    conn.execute("COMMIT") # Empty batch is valid
+                if not batch_resolved:
+                    print(f"    [Batch {batch_num}] No matches resolved in this batch.")
+                    conn.execute("COMMIT") 
                     continue
 
-                # 6. Resolve batch immediately
-                print(f"    [Batch {batch_num}] Resolving {len(batch_pairs)} fixtures...")
-                batch_resolved = []
-                for pair in batch_pairs:
-                    fs_fix = pair['fs_fix']
-                    candidates = pair['candidates']
-
-                    match_row, score, method = await matcher.resolve(
-                        fs_fix, candidates, conn
-                    )
-
-                    if match_row:
-                        # ENFORCE CONTRACT: Strictly validate match before saving
-                        try:
-                            # Add missing context for contract validation
-                            match_row['home'] = match_row.get('home', match_row.get('home_team'))
-                            match_row['away'] = match_row.get('away', match_row.get('away_team'))
-                            FBDataContract.validate_match(match_row)
-                        except DataContractViolation as dcv:
-                            print(f"    [Contract] Skipping match: {dcv}")
-                            continue
-
-                        match_row["fixture_id"] = fs_fix.get("fixture_id", "")
-                        match_row["home_id"] = fs_fix.get("home_team_id") or fs_fix.get("home_id")
-                        match_row["away_id"] = fs_fix.get("away_team_id") or fs_fix.get("away_id")
-                        match_row["resolution_method"] = method
-                        save_site_matches([match_row], commit=False)  # Atomic Batch: NO commit
-                        batch_resolved.append(match_row)
-                        all_resolved_matches.append(match_row)
-                    else:
-                        all_resolved_matches.append({"status": "failed", "resolution_method": "failed"})
+                all_resolved_matches.extend(batch_resolved)
 
                 # 7. Extract odds for batch (using same persistent context)
                 if batch_resolved:

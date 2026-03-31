@@ -87,7 +87,6 @@ _SCHEMA_SQL = """
         prediction          TEXT,
         confidence          TEXT,
         reason              TEXT,
-        reason              TEXT,
         home_form_n         INTEGER,
         away_form_n         INTEGER,
         h2h_count           INTEGER,
