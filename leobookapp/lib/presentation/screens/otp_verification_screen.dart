@@ -9,8 +9,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String phone;
+  final bool isPhoneChange;
 
-  const OtpVerificationScreen({super.key, required this.phone});
+  const OtpVerificationScreen({
+    super.key,
+    required this.phone,
+    this.isPhoneChange = false,
+  });
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -68,9 +73,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     
     setState(() => _isLoading = true);
     try {
-      // Logic: WhatsApp first, then SMS fallback after 30s
-      final channel = _isSmsFallback ? OtpChannel.sms : OtpChannel.whatsapp;
-      await _authRepo.sendOtp(widget.phone, channel: channel);
+      if (widget.isPhoneChange) {
+        // For phone changes, use updatePhone again
+        await _authRepo.updatePhone(widget.phone);
+      } else {
+        // Logic: WhatsApp first, then SMS fallback after 30s
+        final channel = _isSmsFallback ? OtpChannel.sms : OtpChannel.whatsapp;
+        await _authRepo.sendOtp(widget.phone, channel: channel);
+      }
       
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -99,7 +109,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     setState(() => _isLoading = true);
     try {
       // 1. Verify the OTP via AuthRepository
-      await _authRepo.verifyOtp(widget.phone, token);
+      await _authRepo.verifyOtp(
+        widget.phone, 
+        token,
+        type: widget.isPhoneChange ? OtpType.phoneChange : OtpType.sms,
+      );
 
       // 2. Update the profiles table to mark phone_verified = true
       final supabase = Supabase.instance.client;

@@ -89,19 +89,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       final formattedPhone = toE164(_selectedCountryCode, _phoneController.text);
       final authRepo = AuthRepository();
       
-      // Update phone to trigger verification (optional but good for tracking)
-      final supabase = Supabase.instance.client;
-      await supabase.auth.updateUser(
-        UserAttributes(phone: formattedPhone),
-      );
-      
-      await authRepo.sendOtp(formattedPhone);
+      // Use updatePhone for logged-in users to avoid 422 phone_exists
+      await authRepo.updatePhone(formattedPhone);
       
       if (!mounted) return;
       
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => OtpVerificationScreen(phone: formattedPhone),
+          builder: (_) => OtpVerificationScreen(
+            phone: formattedPhone,
+            isPhoneChange: true, // Signal to use phoneChange OTP type
+          ),
         ),
       );
     } catch (e) {

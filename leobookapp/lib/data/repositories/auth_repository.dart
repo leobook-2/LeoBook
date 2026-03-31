@@ -174,16 +174,28 @@ class AuthRepository {
     }
   }
 
-  /// Verify OTP token for phone sign-in.
-  Future<AuthResponse> verifyOtp(String phone, String token) async {
+  /// Update phone number for already-authenticated user (triggers verification).
+  Future<void> updatePhone(String phone) async {
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(phone: phone),
+      );
+    } catch (e) {
+      debugPrint('[AuthRepository] Update phone error: $e');
+      rethrow;
+    }
+  }
+
+  /// Verify OTP token (supports sms and phoneChange).
+  Future<AuthResponse> verifyOtp(String phone, String token, {OtpType type = OtpType.sms}) async {
     try {
       return await _supabase.auth.verifyOTP(
         phone: phone,
         token: token,
-        type: OtpType.sms,
+        type: type,
       );
     } catch (e) {
-      debugPrint('[AuthRepository] Verify OTP error: $e');
+      debugPrint('[AuthRepository] Verify OTP ($type) error: $e');
       rethrow;
     }
   }
