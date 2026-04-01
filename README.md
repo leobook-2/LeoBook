@@ -2,7 +2,7 @@
 
 **Developer**: Materialless LLC
 **Chief Engineer**: Emenike Chinenye James
-**Powered by**: Rule Engine + Neural RL Stairway Engine · Gemini Multi-Key (AIGO browser assistant + search enrichment only)
+**Powered by**: Rule Engine + Neural RL Stairway Engine
 **Architecture**: v9.5.7 "Stairway Engine" (All files ≤500 lines · Fully Modular · Season-Aware RL Weighting · Data Contract)
 **App Version**: 9.5.7 ([pubspec.yaml](leobookapp/pubspec.yaml) aligned with `LEOBOOK_VERSION` in `Core/Utils/constants.py`)
 
@@ -64,7 +64,7 @@ Leo.py (Entry Point — 473 lines)
 - **`Modules/FootballCom/`** — Betting platform automation (login, odds, booking, withdrawal, sequential extraction)
 - **`Modules/Assets/`** — Asset sync: team crests, league crests, region flags (171 SVGs, 1,234 leagues)
 - **`Data/Access/`** — **Computed Standings**, Supabase sync, season completeness, outcome review
-- **`Scripts/`** — Shims + CLI tools (recommendation engine, search dictionary builder)
+- **`Scripts/`** — Shims + CLI tools (recommendation engine, RL diagnostics)
 - **`leobookapp/`** — Flutter dashboard (DM Sans typography · UI Inspiration palette · Recommendation filters · Live countdown)
 
 ---
@@ -140,8 +140,6 @@ LeoBook/
 │       └── models/
 ├── Scripts/
 │   ├── recommend_bets.py
-│   ├── build_search_dict.py
-│   ├── search_dict_llm.py
 │   └── rl_diagnose.py
 ├── leobookapp/                     # Flutter dashboard
 │   ├── pubspec.yaml                # version: 9.5.6+1
@@ -247,7 +245,6 @@ python Leo.py --upgrade-crests           # Upgrade crests to HQ logos
 python Leo.py --recommend                # Generate recommendations
 python Leo.py --accuracy                 # Print accuracy report
 python Leo.py --review                   # Outcome review (finished matches)
-python Leo.py --search-dict              # Rebuild search dictionary
 
 # ── Rule Engine ──
 python Leo.py --rule-engine              # Show default engine

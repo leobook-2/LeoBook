@@ -1,5 +1,5 @@
 // user_cubit.dart: Real Supabase auth state management.
-// Part of LeoBook App — State Management (Cubit)
+// Part of LeoBook App - State Management (Cubit)
 //
 // Classes: UserCubit
 
@@ -7,9 +7,10 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show AuthState, AuthChangeEvent;
-import 'package:local_auth/local_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'
+    show AuthChangeEvent, AuthState, OtpType;
 import '../../data/models/user_model.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/services/twilio_service.dart';
@@ -28,8 +29,6 @@ class UserCubit extends Cubit<UserState> {
     _restoreSession();
   }
 
-  // ─── Auth Listeners ──────────────────────────────────────────────
-
   void _listenToAuthChanges() {
     _authSub = _authRepo.authStateChanges.listen((authState) {
       final event = authState.event;
@@ -44,13 +43,10 @@ class UserCubit extends Cubit<UserState> {
     });
   }
 
-  /// Check if there's an existing session on cold start.
   void _restoreSession() async {
     final user = _authRepo.currentUser;
     if (user != null) {
       final model = UserModel.fromSupabaseUser(user);
-      
-      // Check for Biometrics on cold start if previously enabled
       final hasCredentials = await _secureStorage.containsKey(key: 'leo_id');
       if (hasCredentials && model.isBiometricsEnabled) {
         emit(UserBiometricPrompt(user: model));
@@ -61,7 +57,6 @@ class UserCubit extends Cubit<UserState> {
     }
   }
 
-  /// Centralized state emission logic for LeoBook gating rules.
   void _emitCorrectState(UserModel model) {
     if (!model.isProfileComplete) {
       emit(UserProfileIncomplete(user: model));
@@ -72,18 +67,15 @@ class UserCubit extends Cubit<UserState> {
     }
   }
 
-  // ─── Smart Auth (Password vs OTP) ───────────────────────────────
-
-  /// Determine if we should show the Password screen or send an OTP.
   Future<bool> checkUserStatus(String identifier) async {
     emit(UserLoading(user: state.user));
     try {
       final userData = await _authRepo.checkUserExistence(identifier);
       emit(UserInitial(user: state.user));
-      return userData != null; // True if user exists (should show Password screen)
-    } catch (e) {
+      return userData?['exists'] == true;
+    } catch (_) {
       emit(UserInitial(user: state.user));
-      return false; // Safely default to OTP/Signup flow
+      return false;
     }
   }
 
@@ -93,23 +85,27 @@ class UserCubit extends Cubit<UserState> {
       final response = await _authRepo.signInWithPassword(identifier, password);
       if (response.user != null) {
         final model = UserModel.fromSupabaseUser(response.user!);
-        
-        // Save for biometrics if enabled
         if (model.isBiometricsEnabled) {
           await _secureStorage.write(key: 'leo_id', value: identifier);
           await _secureStorage.write(key: 'leo_pw', value: password);
         }
-
         _emitCorrectState(model);
       } else {
-        emit(UserError(user: state.user, message: 'Invalid credentials.'));
+        emit(UserError(
+          user: state.user,
+          message: 'Incorrect email/phone or password.',
+        ));
       }
     } catch (e) {
-      emit(UserError(user: state.user, message: e.toString()));
+      emit(UserError(
+        user: state.user,
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Incorrect email/phone or password.',
+        ),
+      ));
     }
   }
-
-  // ─── Biometrics ──────────────────────────────────────────────────
 
   Future<void> biometricSignIn() async {
     final identifier = await _secureStorage.read(key: 'leo_id');
@@ -132,7 +128,13 @@ class UserCubit extends Cubit<UserState> {
         emit(UserInitial(user: state.user));
       }
     } catch (e) {
-      emit(UserError(user: state.user, message: 'Biometric error: $e'));
+      emit(UserError(
+        user: state.user,
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Biometric sign-in failed. Please try again.',
+        ),
+      ));
       emit(UserInitial(user: state.user));
     }
   }
@@ -143,7 +145,7 @@ class UserCubit extends Cubit<UserState> {
 
     try {
       await _authRepo.updateUserMetadata({'biometrics_enabled': enabled});
-      
+
       if (enabled && password != null) {
         final id = user.email ?? user.phone;
         if (id != null) {
@@ -156,13 +158,11 @@ class UserCubit extends Cubit<UserState> {
       }
 
       final updated = user.copyWith(isBiometricsEnabled: enabled);
-      emit(UserAuthenticated(user: updated));
-    } catch (e) {
+      _emitCorrectState(updated);
+    } catch (_) {
       emit(UserError(user: user, message: 'Failed to update biometrics.'));
     }
   }
-
-  // ─── Google Sign-In ──────────────────────────────────────────────
 
   Future<void> signInWithGoogle() async {
     emit(UserLoading(user: state.user));
@@ -171,8 +171,6 @@ class UserCubit extends Cubit<UserState> {
       if (response.user != null) {
         _emitCorrectState(UserModel.fromSupabaseUser(response.user!));
       } else if (kIsWeb) {
-        // On web, OAuth redirects the page — session arrives via authStateChanges.
-        // Reset to initial so the UI isn't stuck on loading.
         emit(UserInitial(user: state.user));
       } else {
         emit(UserError(user: state.user, message: 'Google sign-in failed.'));
@@ -180,64 +178,77 @@ class UserCubit extends Cubit<UserState> {
     } catch (e) {
       emit(UserError(
         user: state.user,
-        message: e.toString(),
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Google sign-in failed. Please try again.',
+        ),
       ));
     }
   }
-
-  // ─── Phone OTP ───────────────────────────────────────────────────
 
   Future<void> sendPhoneOtp(String phone) async {
     emit(UserLoading(user: state.user));
     try {
       await _authRepo.sendPhoneOtp(phone);
-      // Stay in loading — the UI will navigate to OTP screen
       emit(UserInitial(user: state.user));
     } catch (e) {
       emit(UserError(
         user: state.user,
-        message: 'Failed to send OTP: ${e.toString()}',
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Unable to send the verification code right now.',
+        ),
       ));
     }
   }
 
-  Future<void> verifyPhoneOtp(String phone, String token) async {
+  Future<void> verifyPhoneOtp(
+    String phone,
+    String token, {
+    bool isPhoneChange = false,
+  }) async {
     emit(UserLoading(user: state.user));
     try {
-      final response = await _authRepo.verifyPhoneOtp(phone, token);
+      final response = await _authRepo.verifyOtp(
+        phone,
+        token,
+        type: isPhoneChange ? OtpType.phoneChange : OtpType.sms,
+      );
       if (response.user != null) {
-        emit(UserAuthenticated(
-          user: UserModel.fromSupabaseUser(response.user!),
-        ));
+        _emitCorrectState(UserModel.fromSupabaseUser(response.user!));
       } else {
-        emit(UserError(user: state.user, message: 'OTP verification failed.'));
+        emit(UserError(
+          user: state.user,
+          message: 'Invalid verification code. Please try again.',
+        ));
       }
     } catch (e) {
       emit(UserError(
         user: state.user,
-        message: 'Invalid OTP: ${e.toString()}',
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Invalid verification code. Please try again.',
+        ),
       ));
     }
   }
-
-  // ─── Email Auth ──────────────────────────────────────────────────
 
   Future<void> signUpWithEmail(String email, String password) async {
     emit(UserLoading(user: state.user));
     try {
       final response = await _authRepo.signUpWithEmail(email, password);
       if (response.user != null) {
-        emit(UserAuthenticated(
-          user: UserModel.fromSupabaseUser(response.user!),
-        ));
+        _emitCorrectState(UserModel.fromSupabaseUser(response.user!));
       } else {
-        // Email confirmation required — user registered but not yet verified
         emit(UserInitial(user: state.user));
       }
     } catch (e) {
       emit(UserError(
         user: state.user,
-        message: 'Sign-up failed: ${e.toString()}',
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Unable to create your account right now.',
+        ),
       ));
     }
   }
@@ -248,20 +259,24 @@ class UserCubit extends Cubit<UserState> {
       final response = await _authRepo.signInWithEmail(email, password);
       if (response.user != null) {
         final model = UserModel.fromSupabaseUser(response.user!);
-        if (model.isProfileComplete) {
-          // Send notification if phone exists
-          if (model.phone != null) {
-            TwilioService.sendDeviceLoginNotification(model.phone!);
-          }
-          emit(UserAuthenticated(user: model));
-        } else {
-          emit(UserProfileIncomplete(user: model));
+        if (model.isProfileComplete && model.isPhoneVerified && model.phone != null) {
+          TwilioService.sendDeviceLoginNotification(model.phone!);
         }
+        _emitCorrectState(model);
       } else {
-        emit(UserError(user: state.user, message: 'Email sign-in failed.'));
+        emit(UserError(
+          user: state.user,
+          message: 'Incorrect email/phone or password.',
+        ));
       }
     } catch (e) {
-      emit(UserError(user: state.user, message: e.toString()));
+      emit(UserError(
+        user: state.user,
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Incorrect email/phone or password.',
+        ),
+      ));
     }
   }
 
@@ -269,7 +284,13 @@ class UserCubit extends Cubit<UserState> {
     try {
       await _authRepo.sendPasswordReset(email);
     } catch (e) {
-      emit(UserError(user: state.user, message: 'Reset failed: $e'));
+      emit(UserError(
+        user: state.user,
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Unable to send a reset link right now.',
+        ),
+      ));
     }
   }
 
@@ -279,26 +300,40 @@ class UserCubit extends Cubit<UserState> {
       await _authRepo.sendMagicLink(email);
       emit(UserInitial(user: state.user));
     } catch (e) {
-      emit(UserError(user: state.user, message: 'Magic link failed: $e'));
+      emit(UserError(
+        user: state.user,
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Unable to send a magic link right now.',
+        ),
+      ));
     }
   }
 
-  // ─── Skip (Guest) ───────────────────────────────────────────────
+  Future<void> refreshCurrentUserState() async {
+    final user = _authRepo.currentUser;
+    if (user == null) {
+      emit(const UserInitial(user: UserModel(id: 'guest')));
+      return;
+    }
+
+    _emitCorrectState(UserModel.fromSupabaseUser(user));
+  }
+
+  void dismissBiometricPrompt() {
+    emit(UserInitial(user: state.user));
+  }
 
   void skipAsGuest() {
     emit(const UserInitial(user: UserModel(id: 'guest')));
   }
 
-  // ─── Super LeoBook (Subscription toggle with persistence) ───────
-
   void upgradeToSuperLeoBook() {
     final activatedAt = DateTime.now().toIso8601String();
-    
-    // Save to Supabase metadata in background so it persists across sessions
+
     _authRepo.updateUserMetadata({
       'super_leobook_activated_at': activatedAt,
     }).then((_) {
-      // TRIGGER EMAIL: Super LeoBook Activated
       _authRepo.triggerEmailEdgeFunction('subscription_active', {
         'activation_date': activatedAt,
       });
@@ -314,7 +349,6 @@ class UserCubit extends Cubit<UserState> {
   }
 
   void cancelSuperLeoBook() {
-    // Clear from Supabase metadata
     _authRepo.updateUserMetadata({
       'super_leobook_activated_at': null,
     }).catchError((e) {
@@ -329,8 +363,6 @@ class UserCubit extends Cubit<UserState> {
     emit(UserAuthenticated(user: downgraded));
   }
 
-  // ─── Logout ──────────────────────────────────────────────────────
-
   Future<void> logout() async {
     try {
       await _authRepo.signOut();
@@ -339,8 +371,6 @@ class UserCubit extends Cubit<UserState> {
     }
     emit(const UserInitial(user: UserModel(id: 'guest')));
   }
-
-  // ─── Legacy (test helpers) ───────────────────────────────────────
 
   void loginAsLite() {
     emit(UserAuthenticated(

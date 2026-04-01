@@ -26,6 +26,30 @@ serve(async (req: Request) => {
           </html>
         `;
         break;
+
+      case 'login_alert': {
+        const forwardedFor = req.headers.get('x-forwarded-for') ??
+          req.headers.get('cf-connecting-ip') ??
+          req.headers.get('x-real-ip') ??
+          'Unavailable';
+        const device = data?.device ?? {};
+        subject = 'New LeoBook sign-in detected';
+        html = `
+          <html>
+            <body style="background-color: #000000; color: #ffffff; font-family: sans-serif; padding: 40px;">
+              <h1 style="color: #d4af37;">LEOBOOK</h1>
+              <h2>New sign-in detected</h2>
+              <p>We noticed a successful sign-in on your LeoBook account.</p>
+              <p><strong>Identifier:</strong> ${data?.identifier ?? email}</p>
+              <p><strong>IP Address:</strong> ${forwardedFor}</p>
+              <p><strong>Platform:</strong> ${device.platform ?? 'Unknown'}</p>
+              <p><strong>Device:</strong> ${device.model ?? device.device ?? 'Unknown'}</p>
+              <p><strong>Logged in at:</strong> ${data?.logged_in_at ?? 'Unknown'}</p>
+            </body>
+          </html>
+        `;
+        break;
+      }
       
       case 'trial_reminder':
         subject = 'Your LeoBook Trial Ends in 15 Days';

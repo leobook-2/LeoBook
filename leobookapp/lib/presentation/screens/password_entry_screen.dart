@@ -1,5 +1,5 @@
 // password_entry_screen.dart: Glassmorphism password entry for existing users.
-// Part of LeoBook App — Screens
+// Part of LeoBook App - Screens
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,6 +7,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import 'package:leobookapp/presentation/screens/main_screen.dart';
+import 'package:leobookapp/presentation/screens/otp_verification_screen.dart';
+import 'package:leobookapp/presentation/screens/profile_setup_screen.dart';
 
 class PasswordEntryScreen extends StatefulWidget {
   final String identifier;
@@ -34,24 +36,40 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
   }
 
   void _forgotPassword() {
-    // Lead to OTP flow as fallback
-    // Since checkUserStatus already determined they exist, 
-    // we can just send them to the OTP path.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Redirecting to OTP verification...')),
-    );
+    if (widget.identifier.contains('@')) {
+      context.read<UserCubit>().sendPasswordReset(widget.identifier);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reset link sent to your email.')),
+      );
+      return;
+    }
+
     context.read<UserCubit>().sendPhoneOtp(widget.identifier);
-    Navigator.of(context).pop(); // Go back to login or replace with OTP screen
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => OtpVerificationScreen(phone: widget.identifier),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return BlocListener<UserCubit, UserState>(
       listener: (context, state) {
-        if (state is UserAuthenticated || state is UserNeedsVerification) {
+        if (state is UserAuthenticated) {
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const MainScreen()),
             (_) => false,
+          );
+        } else if (state is UserProfileIncomplete) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
+          );
+        } else if (state is UserNeedsVerification) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => OtpVerificationScreen(phone: state.phone),
+            ),
           );
         } else if (state is UserError) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -100,8 +118,6 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
                       ),
                     ),
                     const SizedBox(height: 40),
-
-                    // Password input
                     Container(
                       decoration: BoxDecoration(
                         color: AppColors.neutral700.withValues(alpha: 0.5),
@@ -114,18 +130,18 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(left: 16),
-                            child: Icon(Icons.lock_outline_rounded,
-                                color: AppColors.textTertiary, size: 22),
+                            child: Icon(
+                              Icons.lock_outline_rounded,
+                              color: AppColors.textTertiary,
+                              size: 22,
+                            ),
                           ),
                           Expanded(
                             child: TextField(
                               controller: _passwordController,
                               obscureText: _obscurePassword,
                               autofocus: true,
-                              style: GoogleFonts.lexend(
-                                fontSize: 16,
-                                color: Colors.white,
-                              ),
+                              style: GoogleFonts.lexend(fontSize: 16, color: Colors.white),
                               decoration: InputDecoration(
                                 hintText: 'Password',
                                 hintStyle: GoogleFonts.lexend(
@@ -142,8 +158,7 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () =>
-                                setState(() => _obscurePassword = !_obscurePassword),
+                            onTap: () => setState(() => _obscurePassword = !_obscurePassword),
                             child: Padding(
                               padding: const EdgeInsets.only(right: 16),
                               child: Icon(
@@ -158,10 +173,7 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 24),
-
-                    // Login Button
                     BlocBuilder<UserCubit, UserState>(
                       builder: (context, state) {
                         final isLoading = state is UserLoading;
@@ -204,10 +216,7 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
                         );
                       },
                     ),
-
                     const SizedBox(height: 24),
-
-                    // Forgot Password
                     GestureDetector(
                       onTap: _forgotPassword,
                       child: Text(

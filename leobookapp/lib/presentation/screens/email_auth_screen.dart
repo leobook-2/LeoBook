@@ -1,7 +1,5 @@
 // email_auth_screen.dart: Email sign-in / sign-up screen.
-// Part of LeoBook App — Screens
-//
-// Toggle between Sign In and Sign Up. Matches Grok-style glass aesthetic.
+// Part of LeoBook App - Screens
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,10 +7,18 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import 'package:leobookapp/presentation/screens/main_screen.dart';
+import 'package:leobookapp/presentation/screens/otp_verification_screen.dart';
 import 'package:leobookapp/presentation/screens/profile_setup_screen.dart';
 
 class EmailAuthScreen extends StatefulWidget {
-  const EmailAuthScreen({super.key});
+  final String? initialEmail;
+  final bool startInSignUpMode;
+
+  const EmailAuthScreen({
+    super.key,
+    this.initialEmail,
+    this.startInSignUpMode = false,
+  });
 
   @override
   State<EmailAuthScreen> createState() => _EmailAuthScreenState();
@@ -25,13 +31,19 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
   bool _obscurePassword = true;
 
   @override
+  void initState() {
+    super.initState();
+    _emailController.text = widget.initialEmail ?? '';
+    _isSignUp = widget.startInSignUpMode;
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  /// Validate password meets Supabase's strict policy.
   String? _validatePassword(String password) {
     final missing = <String>[];
     if (password.length < 8) missing.add('at least 8 characters');
@@ -50,7 +62,6 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
     final password = _passwordController.text.trim();
     if (email.isEmpty || password.isEmpty) return;
 
-    // Only enforce strict password rules on sign-up
     if (_isSignUp) {
       final error = _validatePassword(password);
       if (error != null) {
@@ -91,14 +102,19 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
         if (state is UserAuthenticated) {
           _navigateToMain();
         } else if (state is UserProfileIncomplete) {
-          Navigator.of(context).pushAndRemoveUntil(
+          Navigator.of(context).pushReplacement(
             PageRouteBuilder(
               pageBuilder: (_, __, ___) => const ProfileSetupScreen(),
               transitionsBuilder: (_, anim, __, child) =>
                   FadeTransition(opacity: anim, child: child),
               transitionDuration: const Duration(milliseconds: 400),
             ),
-            (_) => false,
+          );
+        } else if (state is UserNeedsVerification) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => OtpVerificationScreen(phone: state.phone),
+            ),
           );
         } else if (state is UserError) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -107,9 +123,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
               backgroundColor: AppColors.liveRed,
             ),
           );
-        }
-        // If sign-up succeeded but needs email confirmation
-        if (state is UserInitial && _isSignUp) {
+        } else if (state is UserInitial && _isSignUp) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Check your email to confirm your account.'),
@@ -131,8 +145,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                 return Center(
                   child: Container(
                     width: 420,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 40, horizontal: 32),
+                    padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 32),
                     decoration: BoxDecoration(
                       color: AppColors.neutral800,
                       borderRadius: BorderRadius.circular(20),
@@ -153,12 +166,10 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                 );
               }
 
-              // Mobile
               return Column(
                 children: [
                   Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     child: _buildHeader(),
                   ),
                   Expanded(
@@ -221,8 +232,6 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
           ),
         ),
         const SizedBox(height: 32),
-
-        // Email
         _inputField(
           controller: _emailController,
           hint: 'Email address',
@@ -230,8 +239,6 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
           keyboardType: TextInputType.emailAddress,
         ),
         const SizedBox(height: 14),
-
-        // Password
         Container(
           decoration: BoxDecoration(
             color: AppColors.neutral800,
@@ -242,17 +249,13 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(left: 16),
-                child: Icon(Icons.lock_outline,
-                    color: AppColors.textTertiary, size: 20),
+                child: Icon(Icons.lock_outline, color: AppColors.textTertiary, size: 20),
               ),
               Expanded(
                 child: TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  style: GoogleFonts.lexend(
-                    fontSize: 15,
-                    color: Colors.white,
-                  ),
+                  style: GoogleFonts.lexend(fontSize: 15, color: Colors.white),
                   decoration: InputDecoration(
                     hintText: 'Password',
                     hintStyle: GoogleFonts.lexend(
@@ -260,14 +263,12 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                       fontSize: 15,
                     ),
                     border: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                   ),
                 ),
               ),
               GestureDetector(
-                onTap: () =>
-                    setState(() => _obscurePassword = !_obscurePassword),
+                onTap: () => setState(() => _obscurePassword = !_obscurePassword),
                 child: Padding(
                   padding: const EdgeInsets.only(right: 16),
                   child: Icon(
@@ -282,7 +283,6 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
             ],
           ),
         ),
-        // Forgot Password?
         if (!_isSignUp)
           Align(
             alignment: Alignment.centerRight,
@@ -302,17 +302,11 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
               },
               child: Text(
                 'Forgot Password?',
-                style: GoogleFonts.lexend(
-                  fontSize: 13,
-                  color: AppColors.textTertiary,
-                ),
+                style: GoogleFonts.lexend(fontSize: 13, color: AppColors.textTertiary),
               ),
             ),
           ),
-
         const SizedBox(height: 24),
-
-        // Submit button
         BlocBuilder<UserCubit, UserState>(
           builder: (context, state) {
             final isLoading = state is UserLoading;
@@ -348,10 +342,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
             );
           },
         ),
-
         const SizedBox(height: 16),
-
-        // Magic Link option
         if (!_isSignUp)
           Center(
             child: TextButton(
@@ -378,10 +369,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
               ),
             ),
           ),
-
         const SizedBox(height: 20),
-
-        // Toggle sign in / sign up
         Center(
           child: GestureDetector(
             onTap: () => setState(() => _isSignUp = !_isSignUp),
@@ -397,7 +385,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                   ),
                   TextSpan(
                     text: _isSignUp ? 'Sign In' : 'Sign Up',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w600,
                     ),
@@ -433,10 +421,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
             child: TextField(
               controller: controller,
               keyboardType: keyboardType,
-              style: GoogleFonts.lexend(
-                fontSize: 15,
-                color: Colors.white,
-              ),
+              style: GoogleFonts.lexend(fontSize: 15, color: Colors.white),
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: GoogleFonts.lexend(
@@ -444,8 +429,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                   fontSize: 15,
                 ),
                 border: InputBorder.none,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
               ),
             ),
           ),

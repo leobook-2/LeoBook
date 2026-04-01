@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/data/repositories/auth_repository.dart';
+import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import 'package:leobookapp/presentation/screens/main_screen.dart';
+import 'package:leobookapp/presentation/screens/profile_setup_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
@@ -25,9 +28,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   final _otpController = TextEditingController();
   final AuthRepository _authRepo = AuthRepository();
   bool _isLoading = false;
-  
   Timer? _resendTimer;
-  int _countdown = 30; // 30s fallback rule
+  int _countdown = 30;
   bool _canResend = false;
   bool _isSmsFallback = false;
 
@@ -56,6 +58,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         timer.cancel();
         return;
       }
+
       if (_countdown > 0) {
         setState(() => _countdown--);
       } else {
@@ -70,30 +73,28 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   Future<void> _handleResend() async {
     if (!_canResend) return;
-    
+
     setState(() => _isLoading = true);
     try {
       String channelName = 'WhatsApp';
       if (widget.isPhoneChange) {
-        // For phone changes, use updatePhone again
         await _authRepo.updatePhone(widget.phone);
-        channelName = 'SMS'; // Supabase updatePhone typically uses SMS
+        channelName = 'SMS';
       } else {
-        // Logic: WhatsApp first, then SMS fallback after 30s
         final channel = _isSmsFallback ? OtpChannel.sms : OtpChannel.whatsapp;
         await _authRepo.sendOtp(widget.phone, channel: channel);
         channelName = channel == OtpChannel.sms ? 'SMS' : 'WhatsApp';
       }
-      
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('OTP resent via $channelName.')),
       );
-      _startResendTimer(); // Restart the timer
+      _startResendTimer();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+        SnackBar(content: Text(AuthRepository.mapAuthError(e))),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -111,41 +112,34 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
     setState(() => _isLoading = true);
     try {
-      // 1. Verify the OTP via AuthRepository
-      await _authRepo.verifyOtp(
-        widget.phone, 
+      final userCubit = context.read<UserCubit>();
+      final supabase = Supabase.instance.client;
+
+      await userCubit.verifyPhoneOtp(
+        widget.phone,
         token,
-        type: widget.isPhoneChange ? OtpType.phoneChange : OtpType.sms,
+        isPhoneChange: widget.isPhoneChange,
       );
 
-      // 2. Update the profiles table to mark phone_verified = true
-      final supabase = Supabase.instance.client;
       final userId = supabase.auth.currentUser?.id;
-      
       if (userId != null) {
-        await supabase
-            .from('profiles')
-            .update({'phone_verified': true})
-            .eq('id', userId);
-            
-        // Optionally update the phone number attribute securely via updateUser metadata as well if needed.
+        await supabase.from('profiles').update({'phone_verified': true}).eq('id', userId);
         await supabase.auth.updateUser(
           UserAttributes(phone: widget.phone, data: {'phone_verified': true}),
         );
+        await userCubit.refreshCurrentUserState();
       }
-
-      if (!mounted) return;
-      
-      // 3. Navigate to MainScreen
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-        (route) => false,
-      );
-
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Invalid OTP or error: $e')),
+        SnackBar(
+          content: Text(
+            AuthRepository.mapAuthError(
+              e,
+              fallbackMessage: 'Invalid verification code. Please try again.',
+            ),
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -154,148 +148,171 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.neutral900,
-      appBar: AppBar(
-        title: Text(
-          'Verification Code',
-          style: GoogleFonts.lexend(fontSize: 18, fontWeight: FontWeight.w600),
+    return BlocListener<UserCubit, UserState>(
+      listener: (context, state) {
+        if (state is UserAuthenticated) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const MainScreen()),
+            (_) => false,
+          );
+        } else if (state is UserProfileIncomplete) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
+            (_) => false,
+          );
+        } else if (state is UserError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message)),
+          );
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.neutral900,
+        appBar: AppBar(
+          title: Text(
+            'Verification Code',
+            style: GoogleFonts.lexend(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
         ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 450),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                   Icon(
-                    _isSmsFallback ? Icons.sms_outlined : Icons.forum_outlined, 
-                    size: 64, 
-                    color: _isSmsFallback ? AppColors.primary : const Color(0xFF25D366)
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Enter verification code',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.lexend(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 450),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _isSmsFallback ? Icons.sms_outlined : Icons.forum_outlined,
+                      size: 64,
+                      color: _isSmsFallback ? AppColors.primary : const Color(0xFF25D366),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'We sent a 6-digit code to\n${widget.phone}',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.lexend(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  
-                  // OTP Input
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.neutral800,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                    ),
-                    child: TextField(
-                      controller: _otpController,
-                      keyboardType: TextInputType.number,
-                      autofocus: true,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(6),
-                      ],
+                    const SizedBox(height: 24),
+                    Text(
+                      'Enter verification code',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.lexend(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
                         color: Colors.white,
-                        letterSpacing: 16,
                       ),
-                      decoration: InputDecoration(
-                        hintText: '000000',
-                        hintStyle: GoogleFonts.lexend(
-                          color: AppColors.textDisabled,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'We sent a 6-digit code to\n${widget.phone}',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.lexend(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.neutral800,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                      ),
+                      child: TextField(
+                        controller: _otpController,
+                        keyboardType: TextInputType.number,
+                        autofocus: true,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(6),
+                        ],
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.lexend(
                           fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
                           letterSpacing: 16,
                         ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 24,
-                        ),
-                      ),
-                      onChanged: (val) {
-                        if (val.length == 6) {
-                          _verifyOtp();
-                        }
-                      },
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Verify Button
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.3),
-                    ),
-                    onPressed: _isLoading ? null : _verifyOtp,
-                    child: _isLoading 
-                        ? const SizedBox(
-                            width: 24, 
-                            height: 24, 
-                            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
-                          )
-                        : Text('Verify Code', style: GoogleFonts.lexend(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Resend Action
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Didn\'t receive code?',
-                        style: GoogleFonts.lexend(color: AppColors.textSecondary, fontSize: 14),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: _canResend ? _handleResend : null,
-                        child: Text(
-                          _canResend 
-                            ? (_isSmsFallback ? 'Send via SMS' : 'Resend via WhatsApp') 
-                            : 'Resend in ${_countdown}s',
-                          style: GoogleFonts.lexend(
-                            color: _canResend ? AppColors.primary : AppColors.textDisabled,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
+                        decoration: InputDecoration(
+                          hintText: '000000',
+                          hintStyle: GoogleFonts.lexend(
+                            color: AppColors.textDisabled,
+                            fontSize: 28,
+                            letterSpacing: 16,
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 24,
                           ),
                         ),
+                        onChanged: (val) {
+                          if (val.length == 6) {
+                            _verifyOtp();
+                          }
+                        },
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.3),
+                      ),
+                      onPressed: _isLoading ? null : _verifyOtp,
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.black,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              'Verify Code',
+                              style: GoogleFonts.lexend(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                    const SizedBox(height: 32),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Didn\'t receive code?',
+                          style: GoogleFonts.lexend(
+                            color: AppColors.textSecondary,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _canResend ? _handleResend : null,
+                          child: Text(
+                            _canResend
+                                ? (_isSmsFallback ? 'Send via SMS' : 'Resend via WhatsApp')
+                                : 'Resend in ${_countdown}s',
+                            style: GoogleFonts.lexend(
+                              color: _canResend ? AppColors.primary : AppColors.textDisabled,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

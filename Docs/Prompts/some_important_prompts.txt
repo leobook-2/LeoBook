@@ -1,9 +1,9 @@
-Before i run the live extraction, could you provide evidence based report that shows how Ch1 to Ch 2 currently works step by step and what data is recieved and who is the source, what  is done with the data by whom and why, and then whats the output and who gets it and why. 
+Could you provide evidence based report that shows how Ch1 to Ch 2 currently works step by step and what data is recieved and who is the source, what  is done with the data by whom and why, and then whats the output and who gets it and why. 
 Evidence. All guardrials, checks  and calls must be full investiagte. This is really important as dead codes may still exist in the codebase and without proper code review and execution flow examination, you are bound to produce outdated and dead end code. 
-Also docs are outdated.
+Also docs are outdated and needs to be updated.
 
 
-could you provide evidence based report that shows how fs_live_streamer.py, the League Standings 
+Could you provide evidence based report that shows how fs_live_streamer.py, the League Standings 
 match_details_screen.dart, league_screen.dart, last matches and head to head match lists match_details_screen.dart#L134-167
  currently works step by step and what data is recieved and who is the source, what  is done with the data by whom and why, and then whats the output and who gets it and why. 
 Evidence. All guardrials, checks  and calls must be full investiagte. This is really important as dead codes may still exist in the codebase and without proper code review and execution flow examination, you are bound to produce outdated and dead end code. 

@@ -3,6 +3,7 @@
 //
 // Classes: AuthRepository
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -20,6 +21,47 @@ class AuthRepository {
 
   /// Whether a user is currently signed in
   bool get isSignedIn => currentUser != null;
+
+  /// Get current auth session
+  Session? get currentSession => _supabase.auth.currentSession;
+
+  static String mapAuthError(
+    Object error, {
+    String fallbackMessage = 'Something went wrong. Please try again.',
+  }) {
+    final statusCode = error is AuthException ? error.statusCode?.toString() : '';
+    final code = error is AuthApiException ? (error.code ?? '').toLowerCase() : '';
+    final message = error.toString().toLowerCase();
+    final combined = '$code $statusCode $message';
+
+    if (combined.contains('invalid_credentials') ||
+        combined.contains('invalid login credentials') ||
+        combined.contains('wrong password') ||
+        combined.contains('invalid_grant')) {
+      return 'Incorrect email/phone or password.';
+    }
+
+    if (combined.contains('user_not_found') ||
+        combined.contains('sub claim in jwt does not exist') ||
+        (combined.contains('jwt') && combined.contains('does not exist'))) {
+      return 'Your session expired. Please sign in again.';
+    }
+
+    if (combined.contains('phone_exists') ||
+        combined.contains('already been registered') ||
+        (combined.contains('phone number') && combined.contains('registered')) ||
+        (combined.contains('duplicate') && combined.contains('phone'))) {
+      return 'This phone number is already linked to another account.';
+    }
+
+    if (combined.contains('email_exists') ||
+        combined.contains('user already registered') ||
+        (combined.contains('already registered') && combined.contains('email'))) {
+      return 'An account already exists with this email.';
+    }
+
+    return fallbackMessage;
+  }
 
   // ─── Google Sign-In ──────────────────────────────────────────────
 
@@ -80,10 +122,14 @@ class AuthRepository {
         throw 'No ID Token found.';
       }
 
-      return await _supabase.auth.signInWithIdToken(
+      final response = await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
       );
+      if (response.user != null) {
+        logUserSession(response.user!, deviceInfo: await _buildDeviceInfo());
+      }
+      return response;
     } catch (e) {
       debugPrint('[AuthRepository] Google Sign-In (native) error: $e');
       rethrow;
@@ -112,9 +158,8 @@ class AuthRepository {
         email: email,
         password: password,
       );
-      // Log session info in background
       if (response.user != null) {
-        logUserSession(response.user!);
+        logUserSession(response.user!, deviceInfo: await _buildDeviceInfo());
       }
       return response;
     } catch (e) {
@@ -132,7 +177,7 @@ class AuthRepository {
         password: password,
       );
       if (response.user != null) {
-        logUserSession(response.user!);
+        logUserSession(response.user!, deviceInfo: await _buildDeviceInfo());
       }
       return response;
     } catch (e) {
@@ -141,18 +186,13 @@ class AuthRepository {
     }
   }
 
-  /// Check if a user exists by searching the profiles table.
-  /// Returns the user's data if found, otherwise null.
   Future<Map<String, dynamic>?> checkUserExistence(String identifier) async {
     try {
-      final query = _supabase.from('profiles').select();
-      if (identifier.contains('@')) {
-        query.eq('email', identifier);
-      } else {
-        query.eq('phone', identifier);
-      }
-      final data = await query.maybeSingle();
-      return data;
+      final response = await _supabase.functions.invoke(
+        'check-user-status',
+        body: {'identifier': identifier},
+      );
+      return response.data as Map<String, dynamic>?;
     } catch (e) {
       debugPrint('[AuthRepository] Check existence error: $e');
       return null;
@@ -256,15 +296,96 @@ class AuthRepository {
   }
 
   /// Log session info and send security alert.
-  Future<void> logUserSession(User user) async {
+  Future<void> logUserSession(
+    User user, {
+    Map<String, dynamic>? deviceInfo,
+  }) async {
     try {
+      final email = user.email;
       final phone = user.phone ?? user.userMetadata?['phone'] as String?;
+
       if (phone != null) {
         TwilioService.sendDeviceLoginNotification(phone);
+      }
+
+      if (email != null) {
+        await triggerEmailEdgeFunction('login_alert', {
+          'identifier': email,
+          'device': deviceInfo ?? <String, dynamic>{},
+          'phone': phone,
+          'logged_in_at': DateTime.now().toIso8601String(),
+        });
       }
     } catch (e) {
       debugPrint('[AuthRepository] Log session error: $e');
     }
+  }
+
+  Future<Map<String, dynamic>> _buildDeviceInfo() async {
+    final plugin = DeviceInfoPlugin();
+
+    try {
+      if (kIsWeb) {
+        final info = await plugin.webBrowserInfo;
+        return {
+          'platform': 'web',
+          'browser': info.browserName.name,
+          'userAgent': info.userAgent,
+          'device': info.platform,
+        };
+      }
+
+      switch (defaultTargetPlatform) {
+        case TargetPlatform.android:
+          final info = await plugin.androidInfo;
+          return {
+            'platform': 'android',
+            'device': info.device,
+            'model': info.model,
+            'manufacturer': info.manufacturer,
+            'androidVersion': info.version.release,
+          };
+        case TargetPlatform.iOS:
+          final info = await plugin.iosInfo;
+          return {
+            'platform': 'ios',
+            'device': info.utsname.machine,
+            'model': info.model,
+            'systemVersion': info.systemVersion,
+            'name': info.name,
+          };
+        case TargetPlatform.windows:
+          final info = await plugin.windowsInfo;
+          return {
+            'platform': 'windows',
+            'device': info.computerName,
+            'model': info.productName,
+            'buildNumber': info.buildNumber,
+          };
+        case TargetPlatform.macOS:
+          final info = await plugin.macOsInfo;
+          return {
+            'platform': 'macos',
+            'device': info.computerName,
+            'model': info.model,
+            'osRelease': info.osRelease,
+          };
+        case TargetPlatform.linux:
+          final info = await plugin.linuxInfo;
+          return {
+            'platform': 'linux',
+            'device': info.prettyName,
+            'model': info.variant ?? info.name,
+            'version': info.version,
+          };
+        case TargetPlatform.fuchsia:
+          return {'platform': 'fuchsia'};
+      }
+    } catch (e) {
+      debugPrint('[AuthRepository] Device info error: $e');
+    }
+
+    return {'platform': 'unknown'};
   }
 
   // ─── Legacy (Aliases for UserCubit) ─────────────────────────────
@@ -300,4 +421,3 @@ class AuthRepository {
     }
   }
 }
-

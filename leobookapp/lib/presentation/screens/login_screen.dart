@@ -1,23 +1,27 @@
 // login_screen.dart: Grok-inspired login/signup screen.
-// Part of LeoBook App — Screens
-//
-// Features: Skip, Continue with Google, Continue with Phone,
-// Terms/Privacy links, "A Materialless Creation" signature.
+// Part of LeoBook App - Screens
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/logic/cubit/user_cubit.dart';
-import 'package:leobookapp/presentation/screens/main_screen.dart';
 import 'package:leobookapp/presentation/screens/email_auth_screen.dart';
-import 'package:leobookapp/presentation/screens/profile_setup_screen.dart';
+import 'package:leobookapp/presentation/screens/main_screen.dart';
 import 'package:leobookapp/presentation/screens/otp_verification_screen.dart';
 import 'package:leobookapp/presentation/screens/password_entry_screen.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:leobookapp/presentation/screens/profile_setup_screen.dart';
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  bool _biometricSheetOpen = false;
 
   void _navigateToMain(BuildContext context) {
     Navigator.of(context).pushReplacement(
@@ -30,14 +34,19 @@ class LoginScreen extends StatelessWidget {
     );
   }
 
-  void _showBiometricPrompt(BuildContext context) {
-    showModalBottomSheet(
+  Future<void> _showBiometricPrompt(BuildContext context) async {
+    if (_biometricSheetOpen) return;
+    _biometricSheetOpen = true;
+
+    await showModalBottomSheet<void>(
       context: context,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: AppColors.neutral800,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => Padding(
+      builder: (sheetContext) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -67,15 +76,18 @@ class LoginScreen extends StatelessWidget {
               icon: Icons.face_rounded,
               isLoading: false,
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(sheetContext);
                 context.read<UserCubit>().biometricSignIn();
               },
             ),
             const SizedBox(height: 12),
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                Navigator.pop(sheetContext);
+                context.read<UserCubit>().dismissBiometricPrompt();
+              },
               child: Text(
-                'Cancel',
+                'Dismiss',
                 style: GoogleFonts.lexend(color: AppColors.textTertiary),
               ),
             ),
@@ -83,6 +95,8 @@ class LoginScreen extends StatelessWidget {
         ),
       ),
     );
+
+    _biometricSheetOpen = false;
   }
 
   Future<void> _handleIdentifierCheck(BuildContext context, String title) async {
@@ -96,9 +110,9 @@ class LoginScreen extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => Padding(
+      builder: (sheetContext) => Padding(
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
           top: 32,
           left: 24,
           right: 24,
@@ -117,9 +131,9 @@ class LoginScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              isPhone 
-                ? 'Enter your phone number to continue.' 
-                : 'Enter your email to continue.',
+              isPhone
+                  ? 'Enter your phone number to continue.'
+                  : 'Enter your email to continue.',
               style: GoogleFonts.lexend(color: AppColors.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 24),
@@ -136,9 +150,13 @@ class LoginScreen extends StatelessWidget {
                 keyboardType: isPhone ? TextInputType.phone : TextInputType.emailAddress,
                 decoration: InputDecoration(
                   hintText: isPhone ? 'e.g. 8012345678' : 'e.g. user@example.com',
-                  hintStyle: TextStyle(color: AppColors.textDisabled, fontSize: 14),
+                  hintStyle: const TextStyle(color: AppColors.textDisabled, fontSize: 14),
                   border: InputBorder.none,
-                  prefixIcon: Icon(isPhone ? Icons.phone_outlined : Icons.email_outlined, color: AppColors.textTertiary, size: 20),
+                  prefixIcon: Icon(
+                    isPhone ? Icons.phone_outlined : Icons.email_outlined,
+                    color: AppColors.textTertiary,
+                    size: 20,
+                  ),
                   contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                 ),
               ),
@@ -154,41 +172,38 @@ class LoginScreen extends StatelessWidget {
               onPressed: () async {
                 final id = controller.text.trim();
                 if (id.isEmpty) return;
-                
-                final formattedId = isPhone 
-                    ? (id.startsWith('+') ? id : '+234$id') 
-                    : id;
 
-                Navigator.pop(context);
+                final formattedId = isPhone ? (id.startsWith('+') ? id : '+234$id') : id;
+                Navigator.pop(sheetContext);
                 final exists = await context.read<UserCubit>().checkUserStatus(formattedId);
-                
+
                 if (!context.mounted) return;
 
                 if (exists) {
-                  // Existing user -> Password Screen
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => PasswordEntryScreen(identifier: formattedId),
                     ),
                   );
+                  return;
+                }
+
+                if (isPhone) {
+                  context.read<UserCubit>().sendPhoneOtp(formattedId);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => OtpVerificationScreen(phone: formattedId),
+                    ),
+                  );
                 } else {
-                  // New user -> OTP / Signup flow
-                  if (isPhone) {
-                    context.read<UserCubit>().sendPhoneOtp(formattedId);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => OtpVerificationScreen(phone: formattedId),
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => EmailAuthScreen(
+                        initialEmail: formattedId,
+                        startInSignUpMode: true,
                       ),
-                    );
-                  } else {
-                    // For Email, send them to the regular Email Screen but prefilled
-                    // or just start the signup directly if we want velocity
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const EmailAuthScreen(),
-                      ),
-                    );
-                  }
+                    ),
+                  );
                 }
               },
               child: Text('Continue', style: GoogleFonts.lexend(fontWeight: FontWeight.bold)),
@@ -211,7 +226,7 @@ class LoginScreen extends StatelessWidget {
             MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
           );
         } else if (state is UserNeedsVerification) {
-          Navigator.of(context).push(
+          Navigator.of(context).pushReplacement(
             MaterialPageRoute(
               builder: (_) => OtpVerificationScreen(phone: state.phone),
             ),
@@ -236,7 +251,6 @@ class LoginScreen extends StatelessWidget {
               final loginContent = _buildDesktopLoginContent(context);
 
               if (isDesktop) {
-                // Desktop: centered modal card
                 return Center(
                   child: Container(
                     width: 420,
@@ -253,7 +267,6 @@ class LoginScreen extends StatelessWidget {
                 );
               }
 
-              // Mobile: full screen with buttons at bottom
               return _buildMobileLoginContent(context);
             },
           ),
@@ -262,13 +275,11 @@ class LoginScreen extends StatelessWidget {
     );
   }
 
-  /// Mobile: title centered vertically, buttons pinned near bottom.
   Widget _buildMobileLoginContent(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          // ── Skip button ────────────────────────────────────
           Align(
             alignment: Alignment.topRight,
             child: Padding(
@@ -289,11 +300,7 @@ class LoginScreen extends StatelessWidget {
               ),
             ),
           ),
-
-          // Push title to center
           const Spacer(flex: 3),
-
-          // ── Logo / Title ───────────────────────────────────
           Text(
             'LeoBook',
             style: GoogleFonts.lexend(
@@ -304,8 +311,6 @@ class LoginScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-
-          // ── Subtitle ──────────────────────────────────────
           Text(
             'Thanks for trying LeoBook.',
             style: GoogleFonts.lexend(
@@ -325,11 +330,7 @@ class LoginScreen extends StatelessWidget {
               height: 1.5,
             ),
           ),
-
-          // Push buttons to bottom
           const Spacer(flex: 5),
-
-          // ── Auth Buttons ───────────────────────────────────
           BlocBuilder<UserCubit, UserState>(
             builder: (context, state) {
               final isLoading = state is UserLoading;
@@ -343,8 +344,7 @@ class LoginScreen extends StatelessWidget {
                       height: 22,
                     ),
                     isLoading: isLoading,
-                    onTap: () =>
-                        context.read<UserCubit>().signInWithGoogle(),
+                    onTap: () => context.read<UserCubit>().signInWithGoogle(),
                   ),
                   const SizedBox(height: 12),
                   _AuthButton(
@@ -364,10 +364,7 @@ class LoginScreen extends StatelessWidget {
               );
             },
           ),
-
           const SizedBox(height: 24),
-
-          // ── Terms & Privacy ────────────────────────────────
           RichText(
             textAlign: TextAlign.center,
             text: TextSpan(
@@ -397,10 +394,7 @@ class LoginScreen extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(height: 32),
-
-          // ── Materialless Creation ──────────────────────────
           Text(
             'A Materialless Creation',
             style: GoogleFonts.lexend(
@@ -410,19 +404,16 @@ class LoginScreen extends StatelessWidget {
               letterSpacing: 0.5,
             ),
           ),
-
           const SizedBox(height: 16),
         ],
       ),
     );
   }
 
-  /// Desktop modal content (compact Column).
   Widget _buildDesktopLoginContent(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ── Skip button ────────────────────────────────────
         Align(
           alignment: Alignment.topRight,
           child: GestureDetector(
@@ -440,10 +431,7 @@ class LoginScreen extends StatelessWidget {
             ),
           ),
         ),
-
         const SizedBox(height: 40),
-
-        // ── Logo / Title ───────────────────────────────────
         Text(
           'LeoBook',
           style: GoogleFonts.lexend(
@@ -454,8 +442,6 @@ class LoginScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-
-        // ── Subtitle ──────────────────────────────────────
         Text(
           'Thanks for trying LeoBook.',
           style: GoogleFonts.lexend(
@@ -475,10 +461,7 @@ class LoginScreen extends StatelessWidget {
             height: 1.5,
           ),
         ),
-
         const SizedBox(height: 40),
-
-        // ── Auth Buttons ───────────────────────────────────
         BlocBuilder<UserCubit, UserState>(
           builder: (context, state) {
             final isLoading = state is UserLoading;
@@ -492,8 +475,7 @@ class LoginScreen extends StatelessWidget {
                     height: 22,
                   ),
                   isLoading: isLoading,
-                  onTap: () =>
-                      context.read<UserCubit>().signInWithGoogle(),
+                  onTap: () => context.read<UserCubit>().signInWithGoogle(),
                 ),
                 const SizedBox(height: 12),
                 _AuthButton(
@@ -513,10 +495,7 @@ class LoginScreen extends StatelessWidget {
             );
           },
         ),
-
         const SizedBox(height: 24),
-
-        // ── Terms & Privacy ────────────────────────────────
         RichText(
           textAlign: TextAlign.center,
           text: TextSpan(
@@ -546,10 +525,7 @@ class LoginScreen extends StatelessWidget {
             ],
           ),
         ),
-
         const SizedBox(height: 32),
-
-        // ── Materialless Creation ──────────────────────────
         Text(
           'A Materialless Creation',
           style: GoogleFonts.lexend(
@@ -563,10 +539,6 @@ class LoginScreen extends StatelessWidget {
     );
   }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Auth Button (glass-style, Grok-inspired)
-// ═══════════════════════════════════════════════════════════════════════════
 
 class _AuthButton extends StatelessWidget {
   final String label;

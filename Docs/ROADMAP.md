@@ -1,7 +1,7 @@
 # LeoBook — Chapter & Page File Dependency Map
 
-> **Version**: 9.5.0 · **Last Updated**: 2026-03-29
-> Reflects Authentication overhaul + v9.5 "heartbeat" (3s updates) + modularisation.
+> **Version**: 9.5.7 · **Last Updated**: 2026-03-31
+> Reflects v9.5.7 "Stairway Engine" — Deterministic Resolution + Standing Reconstruction.
 > Previous version: 9.4.1 (Ch1 pipeline fixes)
 
 ---
@@ -19,7 +19,8 @@
 | `Data/Access/gap_scanner.py` (785L) | `gap_scanner.py` (424L) + `gap_models.py` | ✅ Done |
 | `Data/Access/sync_manager.py` (699L) | `sync_manager.py` (470L) + `sync_schema.py` | ✅ Done |
 | `Core/Intelligence/rl/trainer.py` (979L) | `trainer.py` (832L) + `trainer_io.py` + `trainer_phases.py` | ✅ Done |
-| `Scripts/build_search_dict.py` (835L) | `build_search_dict.py` (589L) + `search_dict_llm.py` | ✅ Done |
+| `Scripts/build_search_dict.py` | DELETED | ✅ Purged v9.5.7 |
+| `Scripts/search_dict_llm.py` | DELETED | ✅ Purged v9.5.7 |
 
 **Note:** `Modules/Assets/` directory was NOT created — by design. `Data/Access/` is the correct home for all asset pipeline files since `Data/` is the syncable boundary.
 
@@ -98,7 +99,7 @@
 | File | Role |
 |---|---|
 | `Core/System/pipeline.py` | `run_chapter_1_p1(p)` |
-| `Modules/FootballCom/fb_manager.py` | `run_odds_harvesting(p)` — Phase 0 empty filter + sequential extraction |
+| `Modules/FootballCom/fb_manager.py` | `run_odds_harvesting(p)` — Deterministic Resolution v2.0 |
 | `Modules/FootballCom/extractor.py` | `extract_league_matches()` — hydration retry loop |
 | `Modules/FootballCom/odds_extractor.py` | Per-market odds extraction |
 | `Modules/FootballCom/navigator.py` | Page navigation, login, balance |
@@ -331,11 +332,11 @@
 | `Data/Access/db_helpers.py` | Re-exports for backward compat |
 | `Data/Access/league_db.py` | `paper_trades` queries |
 
-### `--build-search-dict`
+### `--build-search-dict` (DELETED v9.5.7)
 | File | Role |
 |---|---|
-| `Scripts/build_search_dict.py` | `main()`, DB write operations |
-| `Scripts/search_dict_llm.py` | `query_llm_for_metadata()`, `_build_prompt()`, `_call_llm()` |
+| `Scripts/build_search_dict.py` | DELETED |
+| `Scripts/search_dict_llm.py` | DELETED |
 
 ---
 
@@ -440,36 +441,16 @@ Uses `now_ng()` + `TZ_NG_NAME` from `constants.py`. Never reads system clock tim
 - `log_segments` SQLite table tracks metadata (path, size, uploaded, remote_path)
 
 ### Timezone policy
-LeoBook backend is **WAT-normalised** regardless of host system clock.
-All timestamps: `Core/Utils/constants.py → TZ_NG → now_ng()`.
-Flutter app converts WAT → user local timezone in the app layer.
+LeoBook backend is **WAT-normalised** reg| Hash | Description |
+|---|---|
+| `d9296ed` | **v9.5.7** Feat: Deterministic Resolution v2.0 (Purged Fuzzy/LLM matching) |
+| `a4b54ff` | **v9.5.7** Fix: Standings Reconstruction in RL Trainer (computed_standings) |
+| `b85a508` | **v9.5.0** Feat: Authentication & Heartbeat Overhaul |
 
 ---
 
-## Commit History (2026-03-14/15)
-
-| Hash | Description |
-|---|---|
-| `0ed8e43` | Modularisation complete — all 12 prompts, 6/6 smoke tests green |
-| `f883c23` | Fix `asset_manager` `DB_DIR` import + restore `ranked_markets` json to root |
-| `228f1a6` | Move `ranked_markets` json to `Data/Store/` |
-| `88097f0` | Country code resolution — national teams + clubs |
-| `702e1bf` | `sync_region_flags` rewrite — 1,234 leagues updated, 171 SVGs |
-| `4708795` | `sync_team_assets` + `sync_league_assets` rewritten to SQLite |
-| `d60d1c1` | Season-aware RL weighting + `CUP_FORMAT` completeness fix |
-| DB-only | Stale crest NULL + sync (no code change) |
-| pending | Rotating segmented log system — `RotatingSegmentLogger`, `LogSync`, `TZ_NG_NAME` |
-| pending | Complete modularisation (Prompts 6+9) + dead code removal (6 files) |
-| `9c55776` | **v9.3** Fix: restore `match_resolver.py` to `Modules/FootballCom/` (Ch1P1 FATAL) |
-| `315c376` | **v9.3** Fix: P2 cache `KeyError` + `_CACHE_SCHEMA_VERSION = "9.3"` |
-| `e860801` | **v9.3** Fix: `sync_on_startup force_full=False` (44s startup penalty) + tqdm bypass |
-| `b86a508` | **v9.3** Feat: version card in session logs + `TZ_NG_NAME` top-level import |
-| `c9f29ce` | **v9.3** Fix: `predictions` batch 200 (57014 timeout) + `paper_trades.league_id` TEXT (22P02) |
-| `5c9e448` | **v9.3** Fix: adaptive hydration recovery scroll + suppress scroll/wait log noise |
-| `20c4d88` | **v9.3** Feat: batch resume checkpoint — restart picks up from last completed batch |
-| `5a06755` | **v9.3** Fix: correct misleading SearchDict log line in Ch1P1 |
-| `78b37b7` | **v9.4** Feat: Flashscore UI parity — round grouping, winner highlighting, red cards, league stage |
-| pending | **v9.4.1** Fix: Ch1 pipeline — 6 bugs (NameError, NoneType crash, race condition, zero resolution, partial hydration, off-season filter) |
+*LeoBook Engineering — Materialless LLC · 2026-03-31 · v9.5.7*
+ending | **v9.4.1** Fix: Ch1 pipeline — 6 bugs (NameError, NoneType crash, race condition, zero resolution, partial hydration, off-season filter) |
 
 ---
 

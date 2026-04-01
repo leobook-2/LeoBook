@@ -1,4 +1,4 @@
-> **Version**: 9.5.0 "Stairway Engine" · **Last Updated**: 2026-03-29 · **Architecture**: 3-Phase RL (Poisson Grounding) + 30-dim Action Space + Chapter 1 v9.0 Direct Harvesting + Safety Guardrails v1.0 + **Liquid Glass v3.0 (DM Sans & UI Inspiration Palette)**
+> **Version**: 9.5.7 "Stairway Engine" · **Last Updated**: 2026-03-31 · **Architecture**: 3-Phase RL (Poisson Grounding) + 30-dim Action Space + Chapter 1 v9.0 Direct Harvesting + **Deterministic Resolution v2.0** + **Dynamic Standings Reconstruction** + Safety Guardrails v1.0
 
 ## Table of Contents
 
@@ -30,8 +30,9 @@
 - **SQLite is the single source of truth.** All data originates in `leobook.db`. Supabase is a **push-only read mirror** — the Flutter app reads from Supabase, but no data flows back from Supabase to SQLite during normal operation.
 - **Push-Only Sync.** `SyncManager` uses watermark-based delta detection. Only rows modified since the last watermark are pushed. Zero reads from Supabase during sync.
 - **One-Time Bootstrap.** If a local SQLite table is empty (fresh install or post-corruption), `_bootstrap_from_remote()` pulls from Supabase once, then the watermark is set to `now()` to resume push-only behavior. The `--pull` CLI command also triggers a full bootstrap.
-- **No Standings Table.** Standings are never stored. They are computed exclusively via `computed_standings()` — a Postgres VIEW in Supabase and a helper function in `league_db.py`.
+- **No Standings Table.** Standings are never stored. They are computed exclusively via `computed_standings()` — a Postgres VIEW in Supabase and a helper function in `league_db.py`. This ensures deterministic, leak-free historical training and live predictions.
 - **Supervisor-Worker Pattern.** Leo.py is powered by a `Supervisor` orchestrator that dispatches isolated workers for each chapter, ensuring failure recovery and state persistence.
+- **Deterministic Match Resolution.** Football.com identity resolution is 100% deterministic based on League + Date + Normalized Team Names. All fuzzy matching and LLM-powered resolution have been purged (v9.5.7).
 - **Data Readiness Gates.** Prologue P1-P3 verify data completeness before predictions. O(1) gate checks are powered by a materialized `readiness_cache` in the database.
 - **`MAX_CONCURRENCY=4`** in root `.env`, **capped at 2 in Codespace** (memory constraint).
 - **`N_ACTIONS=30`** — `market_space.py` is the single source of truth for the action space.
@@ -43,7 +44,7 @@ LeoBook uses **two external data sources** for distinct purposes:
 | Source             | Purpose                                                                    | Method                                              |
 | ------------------ | -------------------------------------------------------------------------- | --------------------------------------------------- |
 | **Flashscore.com** | Match data, scores, team/league metadata, historical fixtures, live scores | Playwright browser automation (headful or headless) |
-| **Football.com**   | Odds harvesting, bet placement (Nigeria/Ghana region)                      | Direct API-style Harvesting (v9.0 stable) — no-login scraping sessions |
+| **Football.com**   | Odds harvesting, bet placement (Nigeria/Ghana region)                      | Direct API-style Harvesting (v9.0 stable) — Deterministic Resolution v2.0 |
 
 > [!NOTE]
 > Flashscore is used for data extraction only — no bets are placed there. Football.com is used exclusively for Nigeria/Ghana-region odds and bet placement. The separation is intentional: Flashscore has globally comprehensive match data; Football.com has the target betting platform.
@@ -213,7 +214,7 @@ Leo.py orchestrates the cycle with autonomous task management:
     - **P3: AI Gate**: RL base model + league adapters exist. **Phase Auto-Detection** checks `match_odds` and `fixtures` counts to unlock Phase 2/3.
     - *All gates use a 30-minute auto-remediation timeout. If they fail, they return `NOT READY` and block the pipeline until auto-remediation or manual fix.*
 5. **Chapter 1: Prediction Pipeline**:
-    - **P1**: **URL Resolution & Direct Odds Harvesting** (v9.0 stable, 181 page loads vs 1,532 fixtures). *Active pipeline: Runs 1–7 complete. Run 8 blocked — see [Active Blockers](#active-blockers).*
+    - **P1**: **URL Resolution & Direct Odds Harvesting** (v9.5.7 Deterministic). *Uses exact name normalization and strict date/league matching.*
     - **P2**: Predictions (**30-dim Stairway Engine**). **Data Leak Guard**: Max 1 prediction per team per week.
     - **P3**: Final Chapter Sync (push-only watermark delta) & **EV-Positive Recommendation** generation (Odds 1.20–4.00).
 6. **Chapter 2: Betting & Funds**:
@@ -454,6 +455,12 @@ These are intellectually honest unknowns. They will be answered by data, not ass
 ---
 
 ## 11. Changelog
+
+### v9.5.7 — Deterministic Stabilization (March 31, 2026)
+- **Deterministic Resolution v2.0**: Completely removed fuzzy matching and LLM-powered search logic from `match_resolver.py` and `fb_manager.py`.
+- **Standings Reconstruction**: RL Trainer and Prediction Pipeline now utilize `computed_standings()` for all context building, resolving `no such table: standings` errors permanently.
+- **Dead Code Purge**: Deleted `Scripts/build_search_dict.py` and `Scripts/search_dict_llm.py`.
+- **RL Stability**: Updated `_build_fixture_context` to be metadata-aware (league/season), preventing data leakage during historical training passes.
 
 ### v9.5.0 — Authentication & Heartbeat Overhaul (March 29, 2026)
 - **Supabase Email Authentication**: Implemented full email/password sign-up and sign-in flow with toggle UI, matching Liquid Glass aesthetic.
