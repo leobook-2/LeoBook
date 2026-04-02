@@ -43,6 +43,41 @@ require_command() {
   fi
 }
 
+load_env_file() {
+  local env_file="$1"
+  if [ ! -f "$env_file" ]; then
+    return 0
+  fi
+
+  local line=""
+  local key=""
+  local value=""
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+
+    case "$line" in
+      ""|\#*)
+        continue
+        ;;
+    esac
+
+    if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+
+      if [[ "$value" =~ ^\"(.*)\"$ ]]; then
+        value="${BASH_REMATCH[1]}"
+      elif [[ "$value" =~ ^\'(.*)\'$ ]]; then
+        value="${BASH_REMATCH[1]}"
+      fi
+
+      if [ -z "${!key+x}" ]; then
+        export "$key=$value"
+      fi
+    fi
+  done < "$env_file"
+}
+
 read_local_property() {
   local key="$1"
   if [ ! -f "$LOCAL_PROPERTIES_FILE" ]; then
@@ -361,6 +396,9 @@ upload_file() {
 require_command flutter
 require_command curl
 require_command base64
+
+load_env_file "$APP_DIR/.env"
+load_env_file "$SCRIPT_DIR/.env"
 
 KEYTOOL_BIN="$(resolve_java_tool keytool)"
 ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$(resolve_android_sdk_root || true)}"
