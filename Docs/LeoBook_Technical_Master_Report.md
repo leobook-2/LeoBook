@@ -1,4 +1,4 @@
-> **Version**: 9.5.7 "Stairway Engine" · **Last Updated**: 2026-03-31 · **Architecture**: 3-Phase RL (Poisson Grounding) + 30-dim Action Space + Chapter 1 v9.0 Direct Harvesting + **Deterministic Resolution v2.0** + **Dynamic Standings Reconstruction** + Safety Guardrails v1.0
+> **Version**: 9.5.9 "Stairway Engine" · **Last Updated**: 2026-04-02 · **Architecture**: 3-Phase RL (Poisson Grounding) + 30-dim Action Space + Chapter 1 v9.0 Direct Harvesting + **Deterministic Resolution v2.0** + **Dynamic Standings Reconstruction** + Auth/Prediction Stability Hardening
 
 ## Table of Contents
 
@@ -456,6 +456,20 @@ These are intellectually honest unknowns. They will be answered by data, not ass
 
 ## 11. Changelog
 
+### v9.5.9 - Auth Redirect & Prediction Stability (April 2, 2026)
+- **Mobile auth redirect repair**: Email verification, magic-link, reset, and OAuth flows now target the LeoBook app callback instead of localhost-style links on mobile devices.
+- **OTP flow hardening**: OTP screens now wait for send success before navigating, expose safer delivery errors, and prefer delivery-channel fallback behavior more gracefully.
+- **Prediction merge fix**: Prediction rows now enrich schedule data without overwriting core fixture fields, preventing dates with predictions from disappearing in the UI.
+- **Settings app access**: Added biometric app-access controls to the account/settings page for on-device login convenience.
+
+### v9.5.8 - Auth Flow Stabilization (April 1, 2026)
+- **Friendly auth errors**: Replaced raw Supabase exception text with mapped, user-safe messages across sign-in, sign-up, OTP, biometrics, and profile setup flows.
+- **Auth-backed user detection**: Replaced Flutter-side profiles existence checks with a Supabase Edge Function (check-user-status) to classify existing vs new users from auth-backed state.
+- **Consistent state gating**: Unified auth routing so successful auth transitions now consistently evaluate UserProfileIncomplete, UserNeedsVerification, and UserAuthenticated.
+- **Profile navigation fix**: Complete Profile back navigation now returns to login safely and uses predictive-back-compatible PopScope behavior instead of deprecated WillPopScope.
+- **Security notifications**: Added login alert emails via Supabase Edge Function with device metadata from device_info_plus and forwarded IP extraction at the edge.
+
+
 ### v9.5.7 — Deterministic Stabilization (March 31, 2026)
 - **Deterministic Resolution v2.0**: Completely removed fuzzy matching and LLM-powered search logic from `match_resolver.py` and `fb_manager.py`.
 - **Standings Reconstruction**: RL Trainer and Prediction Pipeline now utilize `computed_standings()` for all context building, resolving `no such table: standings` errors permanently.
@@ -512,5 +526,6 @@ These are intellectually honest unknowns. They will be answered by data, not ass
 - **Time-Based Cooldowns**: Replaced permanent key exhaustion with 65-second auto-recovery in `llm_health_manager.py`.
 - **Exponential Backoff**: `min(2^n, 30)` second delays on consecutive 429s in `build_search_dict.py` and `api_manager.py`.
 
-*Last updated: March 29, 2026 (v9.5.0 — Authentication & Heartbeat Overhaul)*
+*Last updated: April 2, 2026 (v9.5.9 - Auth Redirect & Prediction Stability)*
 *LeoBook Engineering Team — Materialless LLC*
+

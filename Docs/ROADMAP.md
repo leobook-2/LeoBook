@@ -1,7 +1,7 @@
 # LeoBook — Chapter & Page File Dependency Map
 
-> **Version**: 9.5.7 · **Last Updated**: 2026-03-31
-> Reflects v9.5.7 "Stairway Engine" — Deterministic Resolution + Standing Reconstruction.
+> **Version**: 9.5.9 - **Last Updated**: 2026-04-02
+> Reflects v9.5.9 "Stairway Engine" - Auth Redirect Repair + OTP Flow Hardening + Prediction Merge Stabilization.
 > Previous version: 9.4.1 (Ch1 pipeline fixes)
 
 ---

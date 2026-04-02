@@ -182,8 +182,7 @@ class HomeCubit extends Cubit<HomeState> {
         debugPrint("Predictions Stream Error: $e");
       });
 
-      _liveScoresSub =
-          _dataRepository.watchLiveScores().listen((liveUpdates) {
+      _liveScoresSub = _dataRepository.watchLiveScores().listen((liveUpdates) {
         _handleRealtimeUpdate(liveUpdates);
       }, onError: (e) {
         debugPrint("LiveScores Stream Error: $e");
@@ -223,7 +222,8 @@ class HomeCubit extends Cubit<HomeState> {
     _isRefreshing = true;
     try {
       final currentState = state as HomeLoaded;
-      final freshMatches = await _dataRepository.fetchMatches(date: currentState.selectedDate);
+      final freshMatches =
+          await _dataRepository.fetchMatches(date: currentState.selectedDate);
 
       // Guard: if we have good data and fresh fetch is suspiciously small,
       // it's likely a transient Supabase timeout — skip this refresh cycle.
@@ -280,7 +280,8 @@ class HomeCubit extends Cubit<HomeState> {
         allMatches: mergedMatches,
         filteredMatches: filteredMatches,
         featuredMatches: mergedMatches
-            .where((m) => m.confidence != null && m.confidence!.contains('High'))
+            .where(
+                (m) => m.confidence != null && m.confidence!.contains('High'))
             .toList(),
         liveMatches: mergedMatches.where((m) => m.isLive).toList(),
         news: currentState.news,
@@ -320,7 +321,9 @@ class HomeCubit extends Cubit<HomeState> {
         final existing = matchMap[updated.fixtureId];
         if (existing != null) {
           matchMap[updated.fixtureId] = existing.mergeWith(updated);
-        } else {
+        } else if (updated.homeTeam.isNotEmpty &&
+            updated.awayTeam.isNotEmpty &&
+            updated.date.isNotEmpty) {
           matchMap[updated.fixtureId] = updated;
         }
       }
@@ -465,17 +468,15 @@ class HomeCubit extends Cubit<HomeState> {
 
       if (isClosed) return;
 
-      _predictionsSub = _dataRepository
-          .watchPredictions(date: date)
-          .listen((updatedMatches) {
+      _predictionsSub =
+          _dataRepository.watchPredictions(date: date).listen((updatedMatches) {
         _handleRealtimeUpdate(updatedMatches);
       }, onError: (e) {
         debugPrint("Predictions Stream (Update) Error: $e");
       });
 
-      _schedulesSub = _dataRepository
-          .watchSchedules(date: date)
-          .listen((scheduleUpdates) {
+      _schedulesSub =
+          _dataRepository.watchSchedules(date: date).listen((scheduleUpdates) {
         _handleRealtimeUpdate(scheduleUpdates);
       }, onError: (e) {
         debugPrint("Schedules Stream (Update) Error: $e");

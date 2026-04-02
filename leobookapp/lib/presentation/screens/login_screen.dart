@@ -51,7 +51,8 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.fingerprint_rounded, size: 64, color: AppColors.primary),
+            const Icon(Icons.fingerprint_rounded,
+                size: 64, color: AppColors.primary),
             const SizedBox(height: 24),
             Text(
               'Biometric Login',
@@ -99,7 +100,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _biometricSheetOpen = false;
   }
 
-  Future<void> _handleIdentifierCheck(BuildContext context, String title) async {
+  Future<void> _handleIdentifierCheck(
+      BuildContext context, String title) async {
     final controller = TextEditingController();
     final isPhone = title.toLowerCase().contains('phone');
 
@@ -134,7 +136,8 @@ class _LoginScreenState extends State<LoginScreen> {
               isPhone
                   ? 'Enter your phone number to continue.'
                   : 'Enter your email to continue.',
-              style: GoogleFonts.lexend(color: AppColors.textSecondary, fontSize: 13),
+              style: GoogleFonts.lexend(
+                  color: AppColors.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 24),
             Container(
@@ -147,17 +150,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: controller,
                 autofocus: true,
                 style: const TextStyle(color: Colors.white),
-                keyboardType: isPhone ? TextInputType.phone : TextInputType.emailAddress,
+                keyboardType:
+                    isPhone ? TextInputType.phone : TextInputType.emailAddress,
                 decoration: InputDecoration(
-                  hintText: isPhone ? 'e.g. 8012345678' : 'e.g. user@example.com',
-                  hintStyle: const TextStyle(color: AppColors.textDisabled, fontSize: 14),
+                  hintText:
+                      isPhone ? 'e.g. 8012345678' : 'e.g. user@example.com',
+                  hintStyle: const TextStyle(
+                      color: AppColors.textDisabled, fontSize: 14),
                   border: InputBorder.none,
                   prefixIcon: Icon(
                     isPhone ? Icons.phone_outlined : Icons.email_outlined,
                     color: AppColors.textTertiary,
                     size: 20,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                  contentPadding:
+                      const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                 ),
               ),
             ),
@@ -167,29 +174,39 @@ class _LoginScreenState extends State<LoginScreen> {
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.black,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28)),
               ),
               onPressed: () async {
                 final id = controller.text.trim();
                 if (id.isEmpty) return;
 
-                final formattedId = isPhone ? (id.startsWith('+') ? id : '+234$id') : id;
+                final formattedId =
+                    isPhone ? (id.startsWith('+') ? id : '+234$id') : id;
                 Navigator.pop(sheetContext);
-                final exists = await context.read<UserCubit>().checkUserStatus(formattedId);
+                final exists = await context
+                    .read<UserCubit>()
+                    .checkUserStatus(formattedId);
 
                 if (!context.mounted) return;
 
                 if (exists) {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => PasswordEntryScreen(identifier: formattedId),
+                      builder: (_) =>
+                          PasswordEntryScreen(identifier: formattedId),
                     ),
                   );
                   return;
                 }
 
                 if (isPhone) {
-                  context.read<UserCubit>().sendPhoneOtp(formattedId);
+                  await context.read<UserCubit>().sendPhoneOtp(formattedId);
+                  if (!context.mounted ||
+                      context.read<UserCubit>().state is UserError) {
+                    return;
+                  }
+
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => OtpVerificationScreen(phone: formattedId),
@@ -206,7 +223,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   );
                 }
               },
-              child: Text('Continue', style: GoogleFonts.lexend(fontWeight: FontWeight.bold)),
+              child: Text('Continue',
+                  style: GoogleFonts.lexend(fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 32),
           ],
@@ -254,7 +272,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 return Center(
                   child: Container(
                     width: 420,
-                    padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 32),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 40, horizontal: 32),
                     decoration: BoxDecoration(
                       color: AppColors.neutral800,
                       borderRadius: BorderRadius.circular(20),
@@ -351,14 +370,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     label: 'Continue with Phone',
                     icon: Icons.phone_outlined,
                     isLoading: false,
-                    onTap: () => _handleIdentifierCheck(context, 'Continue with Phone'),
+                    onTap: () =>
+                        _handleIdentifierCheck(context, 'Continue with Phone'),
                   ),
                   const SizedBox(height: 12),
                   _AuthButton(
                     label: 'Continue with Email',
                     icon: Icons.email_outlined,
                     isLoading: false,
-                    onTap: () => _handleIdentifierCheck(context, 'Continue with Email'),
+                    onTap: () =>
+                        _handleIdentifierCheck(context, 'Continue with Email'),
                   ),
                 ],
               );
@@ -482,14 +503,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   label: 'Continue with Phone',
                   icon: Icons.phone_outlined,
                   isLoading: false,
-                  onTap: () => _handleIdentifierCheck(context, 'Continue with Phone'),
+                  onTap: () =>
+                      _handleIdentifierCheck(context, 'Continue with Phone'),
                 ),
                 const SizedBox(height: 12),
                 _AuthButton(
                   label: 'Continue with Email',
                   icon: Icons.email_outlined,
                   isLoading: false,
-                  onTap: () => _handleIdentifierCheck(context, 'Continue with Email'),
+                  onTap: () =>
+                      _handleIdentifierCheck(context, 'Continue with Email'),
                 ),
               ],
             );

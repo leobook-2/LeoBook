@@ -4,13 +4,14 @@
 // Grouped sections with category headers, glass cards, version footer
 // with in-app update availability check.
 
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/core/services/update_service.dart';
+import 'package:leobookapp/data/models/user_model.dart';
 import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import 'package:leobookapp/presentation/screens/login_screen.dart';
 import 'package:leobookapp/presentation/screens/super_leobook_screen.dart';
@@ -98,6 +99,10 @@ class AccountScreen extends StatelessWidget {
                       const SizedBox(height: 28),
 
                       // ── Data & Information ─────────────────────
+                      _sectionLabel('Security'),
+                      const SizedBox(height: 8),
+                      _buildSecuritySection(context),
+                      const SizedBox(height: 28),
                       _sectionLabel('Data & Information'),
                       const SizedBox(height: 8),
                       _glassGroup([
@@ -122,7 +127,10 @@ class AccountScreen extends StatelessWidget {
                           onTap: () => showLicensePage(
                             context: context,
                             applicationName: 'LeoBook',
-                            applicationVersion: context.read<UpdateService>().info.currentVersion,
+                            applicationVersion: context
+                                .read<UpdateService>()
+                                .info
+                                .currentVersion,
                           ),
                         ),
                         _settingsTile(
@@ -192,7 +200,8 @@ class AccountScreen extends StatelessWidget {
                 backgroundColor: AppColors.primary.withValues(alpha: 0.15),
                 child: Text(
                   (user.displayName ?? user.id)
-                      .substring(0, (user.displayName ?? user.id).length >= 2 ? 2 : 1)
+                      .substring(
+                          0, (user.displayName ?? user.id).length >= 2 ? 2 : 1)
                       .toUpperCase(),
                   style: GoogleFonts.lexend(
                     fontSize: 16,
@@ -207,7 +216,8 @@ class AccountScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      user.displayName ?? (user.isGuest ? 'Guest' : 'LeoBook User'),
+                      user.displayName ??
+                          (user.isGuest ? 'Guest' : 'LeoBook User'),
                       style: GoogleFonts.lexend(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -227,7 +237,8 @@ class AccountScreen extends StatelessWidget {
               ),
               if (user.isSuperLeoBook)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [AppColors.primary, AppColors.primaryLight],
@@ -300,7 +311,8 @@ class AccountScreen extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppColors.primary,
                     borderRadius: BorderRadius.circular(20),
@@ -325,6 +337,280 @@ class AccountScreen extends StatelessWidget {
   // ═══════════════════════════════════════════════════════════════════
   // Section Label
   // ═══════════════════════════════════════════════════════════════════
+
+  Widget _buildSecuritySection(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _isBiometricAccessAvailable(),
+      builder: (context, snapshot) {
+        final supportsBiometrics = snapshot.data ?? false;
+
+        return BlocBuilder<UserCubit, UserState>(
+          builder: (context, state) {
+            final user = state.user;
+            final subtitle = user.isGuest
+                ? 'Sign in to manage'
+                : supportsBiometrics
+                    ? (user.isBiometricsEnabled ? 'Enabled' : 'Off')
+                    : 'Unavailable';
+
+            return _glassGroup([
+              _settingsTile(
+                icon: Icons.fingerprint_rounded,
+                title: 'App Access',
+                subtitle: subtitle,
+                onTap: () => _handleAppAccessTap(
+                  context,
+                  user,
+                  supportsBiometrics: supportsBiometrics,
+                ),
+              ),
+            ]);
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _handleAppAccessTap(
+    BuildContext context,
+    UserModel user, {
+    required bool supportsBiometrics,
+  }) async {
+    if (user.isGuest) {
+      _showMessage(context, 'Sign in to manage biometric app access.');
+      return;
+    }
+
+    if (!supportsBiometrics) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: AppColors.neutral800,
+          title: Text(
+            'App Access',
+            style: GoogleFonts.lexend(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: Text(
+            'Biometric access is not available on this device yet.',
+            style: GoogleFonts.lexend(
+              color: AppColors.textTertiary,
+              fontSize: 13,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(
+                'Close',
+                style: GoogleFonts.lexend(color: AppColors.primary),
+              ),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final cubit = context.read<UserCubit>();
+    if (user.isBiometricsEnabled) {
+      final shouldDisable = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: AppColors.neutral800,
+          title: Text(
+            'Disable App Access?',
+            style: GoogleFonts.lexend(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: Text(
+            'LeoBook will stop offering fingerprint or face sign-in on this device.',
+            style: GoogleFonts.lexend(
+              color: AppColors.textTertiary,
+              fontSize: 13,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.lexend(color: AppColors.textTertiary),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(
+                'Turn Off',
+                style: GoogleFonts.lexend(color: AppColors.liveRed),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldDisable != true) {
+        return;
+      }
+
+      await cubit.enableBiometrics(false);
+      if (!context.mounted) {
+        return;
+      }
+
+      final latestState = cubit.state;
+      if (latestState is UserError) {
+        _showMessage(context, latestState.message);
+        return;
+      }
+
+      _showMessage(
+        context,
+        'Biometric app access turned off.',
+        backgroundColor: AppColors.primary,
+      );
+      return;
+    }
+
+    final password = await _promptForAppAccessPassword(context);
+    if (!context.mounted || password == null) {
+      return;
+    }
+
+    await cubit.enableBiometrics(true, password: password);
+    if (!context.mounted) {
+      return;
+    }
+
+    final latestState = cubit.state;
+    if (latestState is UserError) {
+      _showMessage(context, latestState.message);
+      return;
+    }
+
+    _showMessage(
+      context,
+      'Biometric app access is now enabled.',
+      backgroundColor: AppColors.primary,
+    );
+  }
+
+  Future<String?> _promptForAppAccessPassword(BuildContext context) async {
+    final controller = TextEditingController();
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.neutral800,
+        title: Text(
+          'Enable App Access',
+          style: GoogleFonts.lexend(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Enter your current LeoBook password to use fingerprint or face sign-in on this device.',
+              style: GoogleFonts.lexend(
+                color: AppColors.textTertiary,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              style: GoogleFonts.lexend(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Current password',
+                hintStyle: GoogleFonts.lexend(color: AppColors.textDisabled),
+                filled: true,
+                fillColor: AppColors.neutral900,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.primary),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.lexend(color: AppColors.textTertiary),
+            ),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: Text(
+              'Enable',
+              style: GoogleFonts.lexend(color: AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+
+    if (!context.mounted || result == null) {
+      return null;
+    }
+
+    if (result.isEmpty) {
+      _showMessage(
+          context, 'Enter your current password to enable biometrics.');
+      return null;
+    }
+
+    return result;
+  }
+
+  Future<bool> _isBiometricAccessAvailable() async {
+    final localAuth = LocalAuthentication();
+
+    try {
+      return await localAuth.isDeviceSupported() &&
+          await localAuth.canCheckBiometrics;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _showMessage(
+    BuildContext context,
+    String message, {
+    Color backgroundColor = AppColors.liveRed,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+      ),
+    );
+  }
 
   Widget _sectionLabel(String label) {
     return Padding(

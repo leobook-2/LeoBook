@@ -33,7 +33,7 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
     super.dispose();
   }
 
-  void _sendOtp() {
+  Future<void> _sendOtp() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty) return;
     // Ensure + prefix
@@ -41,7 +41,12 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
     setState(() {
       _phone = formatted;
     });
-    context.read<UserCubit>().sendPhoneOtp(formatted);
+    await context.read<UserCubit>().sendPhoneOtp(formatted);
+
+    if (!mounted || context.read<UserCubit>().state is UserError) {
+      return;
+    }
+
     setState(() => _otpSent = true);
   }
 
@@ -154,13 +159,13 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
                 children: [
                   // Custom AppBar row
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     child: Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.arrow_back,
-                              color: Colors.white),
+                          icon:
+                              const Icon(Icons.arrow_back, color: Colors.white),
                           onPressed: _goBack,
                         ),
                         Text(
@@ -226,7 +231,8 @@ class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
             children: [
               // Country code chip
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 decoration: BoxDecoration(
                   border: Border(
                     right: BorderSide(

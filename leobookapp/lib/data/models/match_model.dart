@@ -116,10 +116,17 @@ class MatchModel {
     this.recQualifications,
   });
 
-  bool get isLive => status.toLowerCase().contains('live') || (liveMinute != null && liveMinute!.isNotEmpty);
-  bool get isFinished => status.toLowerCase().contains('ft') || status.toLowerCase().contains('finished') || status.toLowerCase().contains('aet') || status.toLowerCase().contains('pen');
-  bool get isStartingSoon => !isLive && !isFinished && status.toLowerCase() != 'postponed';
-  
+  bool get isLive =>
+      status.toLowerCase().contains('live') ||
+      (liveMinute != null && liveMinute!.isNotEmpty);
+  bool get isFinished =>
+      status.toLowerCase().contains('ft') ||
+      status.toLowerCase().contains('finished') ||
+      status.toLowerCase().contains('aet') ||
+      status.toLowerCase().contains('pen');
+  bool get isStartingSoon =>
+      !isLive && !isFinished && status.toLowerCase() != 'postponed';
+
   String get displayStatus {
     if (isLive) return liveMinute ?? 'Live';
     return status;
@@ -135,11 +142,15 @@ class MatchModel {
     return false;
   }
 
-  double get probHome => (ensembleWeights?['home'] ?? rlDecision?['home_win_prob'] ?? 0.0);
-  double get probDraw => (ensembleWeights?['draw'] ?? rlDecision?['draw_prob'] ?? 0.0);
-  double get probAway => (ensembleWeights?['away'] ?? rlDecision?['away_win_prob'] ?? 0.0);
+  double get probHome =>
+      (ensembleWeights?['home'] ?? rlDecision?['home_win_prob'] ?? 0.0);
+  double get probDraw =>
+      (ensembleWeights?['draw'] ?? rlDecision?['draw_prob'] ?? 0.0);
+  double get probAway =>
+      (ensembleWeights?['away'] ?? rlDecision?['away_win_prob'] ?? 0.0);
 
-  String get aiReasoningSentence => ruleExplanation ?? ruleEngineDecision ?? "AI analyzing patterns...";
+  String get aiReasoningSentence =>
+      ruleExplanation ?? ruleEngineDecision ?? "AI analyzing patterns...";
   String get ruleOutput => ruleExplanation ?? ruleEngineDecision ?? "";
 
   Map<String, dynamic> toJson() {
@@ -198,14 +209,16 @@ class MatchModel {
     };
   }
 
-  factory MatchModel.fromCsv(Map<String, dynamic> row, [Map<String, dynamic>? predictionData]) {
+  factory MatchModel.fromCsv(Map<String, dynamic> row,
+      [Map<String, dynamic>? predictionData]) {
     final fixtureId = row['fixture_id']?.toString() ?? '';
     final rawDate = row['date']?.toString() ?? '';
     String formattedDate = rawDate;
     if (rawDate.isNotEmpty && rawDate.contains('/')) {
       final parts = rawDate.split('/');
       if (parts.length == 3) {
-        formattedDate = "${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}";
+        formattedDate =
+            "${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}";
       }
     }
 
@@ -232,22 +245,28 @@ class MatchModel {
       prediction = predictionData['prediction']?.toString();
       confidence = predictionData['confidence']?.toString();
       odds = predictionData['odds']?.toString();
-      reliabilityScore = double.tryParse(predictionData['reliability_score']?.toString() ?? '') ??
-          double.tryParse(predictionData['recommendation_score']?.toString() ?? '') ??
-          double.tryParse(predictionData['market_reliability_score']?.toString() ?? '') ??
+      reliabilityScore = double.tryParse(
+              predictionData['reliability_score']?.toString() ?? '') ??
+          double.tryParse(
+              predictionData['recommendation_score']?.toString() ?? '') ??
+          double.tryParse(
+              predictionData['market_reliability_score']?.toString() ?? '') ??
           0.0;
       xgHome = double.tryParse(predictionData['xg_home']?.toString() ?? '');
       xgAway = double.tryParse(predictionData['xg_away']?.toString() ?? '');
-      reasonTags = predictionData['reason_tags']?.toString() ?? predictionData['reason']?.toString();
+      reasonTags = predictionData['reason_tags']?.toString() ??
+          predictionData['reason']?.toString();
 
       chosenMarket = predictionData['chosen_market']?.toString();
       marketId = predictionData['market_id']?.toString();
       ruleExplanation = predictionData['rule_explanation']?.toString();
       overrideReason = predictionData['override_reason']?.toString();
-      statisticalEdge = double.tryParse(predictionData['statistical_edge']?.toString() ?? '');
+      statisticalEdge =
+          double.tryParse(predictionData['statistical_edge']?.toString() ?? '');
       pureModelSuggestion = predictionData['pure_model_suggestion']?.toString();
 
-      if (confidence != null && (confidence.contains('High') || confidence.contains('Very High'))) {
+      if (confidence != null &&
+          (confidence.contains('High') || confidence.contains('Very High'))) {
         isFeatured = true;
       }
     }
@@ -268,7 +287,9 @@ class MatchModel {
       awayScore: aScore,
       status: (row['match_status'] ?? row['status'] ?? 'Scheduled').toString(),
       sport: sport,
-      league: (row['league_name'] ?? row['league'] ?? row['country_league'] ?? '').toString(),
+      league:
+          (row['league_name'] ?? row['league'] ?? row['country_league'] ?? '')
+              .toString(),
       leagueId: row['league_id']?.toString(),
       prediction: prediction,
       confidence: confidence,
@@ -278,8 +299,10 @@ class MatchModel {
       xgAway: xgAway,
       reasonTags: reasonTags,
       isFeatured: isFeatured,
-      homeCrestUrl: (row['home_crest_url'] ?? row['home_crest'] ?? '').toString(),
-      awayCrestUrl: (row['away_crest_url'] ?? row['away_crest'] ?? '').toString(),
+      homeCrestUrl:
+          (row['home_crest_url'] ?? row['home_crest'] ?? '').toString(),
+      awayCrestUrl:
+          (row['away_crest_url'] ?? row['away_crest'] ?? '').toString(),
       regionFlagUrl: row['region_flag_url']?.toString(),
       leagueCrestUrl: row['league_crest_url']?.toString(),
       chosenMarket: chosenMarket,
@@ -307,49 +330,70 @@ class MatchModel {
   }
 
   MatchModel mergeWith(MatchModel other) {
+    String preferString(String current, String incoming) {
+      return incoming.trim().isNotEmpty ? incoming : current;
+    }
+
+    String? preferNullableString(String? current, String? incoming) {
+      if (incoming == null || incoming.trim().isEmpty) {
+        return current;
+      }
+
+      return incoming;
+    }
+
     return MatchModel(
       fixtureId: fixtureId,
-      date: other.date.isNotEmpty ? other.date : date,
-      time: other.time.isNotEmpty ? other.time : time,
-      homeTeam: other.homeTeam.isNotEmpty ? other.homeTeam : homeTeam,
-      awayTeam: other.awayTeam.isNotEmpty ? other.awayTeam : awayTeam,
+      date: preferString(date, other.date),
+      time: preferString(time, other.time),
+      homeTeam: preferString(homeTeam, other.homeTeam),
+      awayTeam: preferString(awayTeam, other.awayTeam),
       homeTeamId: other.homeTeamId ?? homeTeamId,
       awayTeamId: other.awayTeamId ?? awayTeamId,
       homeScore: other.homeScore ?? homeScore,
       awayScore: other.awayScore ?? awayScore,
-      status: other.status,
-      sport: other.sport.isNotEmpty ? other.sport : sport,
-      league: other.league ?? league,
+      status: preferString(status, other.status),
+      sport: preferString(sport, other.sport),
+      league: preferNullableString(league, other.league),
       leagueId: other.leagueId ?? leagueId,
-      prediction: prediction,
-      odds: odds,
-      confidence: confidence,
-      liveMinute: other.liveMinute ?? liveMinute,
-      isFeatured: isFeatured,
-      valueTag: valueTag,
-      homeCrestUrl: other.homeCrestUrl ?? homeCrestUrl,
-      awayCrestUrl: other.awayCrestUrl ?? awayCrestUrl,
-      regionFlagUrl: other.regionFlagUrl ?? regionFlagUrl,
-      leagueCrestUrl: other.leagueCrestUrl ?? leagueCrestUrl,
-      reliabilityScore: reliabilityScore,
-      xgHome: xgHome,
-      xgAway: xgAway,
-      reasonTags: reasonTags,
-      homeFormN: homeFormN,
-      awayFormN: awayFormN,
-      chosenMarket: chosenMarket,
-      marketId: marketId,
-      ruleExplanation: ruleExplanation,
-      overrideReason: overrideReason,
-      statisticalEdge: statisticalEdge,
-      pureModelSuggestion: pureModelSuggestion,
-      outcomeCorrect: other.outcomeCorrect ?? outcomeCorrect,
-      isAvailableInBookie: other.isAvailableInBookie,
-      homeRedCards: other.homeRedCards > 0 ? other.homeRedCards : homeRedCards,
-      awayRedCards: other.awayRedCards > 0 ? other.awayRedCards : awayRedCards,
-      winner: other.winner ?? winner,
-      leagueStage: other.leagueStage ?? leagueStage,
-      season: other.season ?? season,
+      prediction: preferNullableString(prediction, other.prediction),
+      odds: preferNullableString(odds, other.odds),
+      confidence: preferNullableString(confidence, other.confidence),
+      liveMinute: preferNullableString(liveMinute, other.liveMinute),
+      isFeatured: isFeatured || other.isFeatured,
+      valueTag: preferNullableString(valueTag, other.valueTag),
+      homeCrestUrl: preferNullableString(homeCrestUrl, other.homeCrestUrl),
+      awayCrestUrl: preferNullableString(awayCrestUrl, other.awayCrestUrl),
+      regionFlagUrl: preferNullableString(regionFlagUrl, other.regionFlagUrl),
+      leagueCrestUrl:
+          preferNullableString(leagueCrestUrl, other.leagueCrestUrl),
+      reliabilityScore: other.reliabilityScore ?? reliabilityScore,
+      xgHome: other.xgHome ?? xgHome,
+      xgAway: other.xgAway ?? xgAway,
+      reasonTags: preferNullableString(reasonTags, other.reasonTags),
+      homeFormN: other.homeFormN ?? homeFormN,
+      awayFormN: other.awayFormN ?? awayFormN,
+      chosenMarket: preferNullableString(chosenMarket, other.chosenMarket),
+      marketId: preferNullableString(marketId, other.marketId),
+      ruleExplanation:
+          preferNullableString(ruleExplanation, other.ruleExplanation),
+      overrideReason:
+          preferNullableString(overrideReason, other.overrideReason),
+      statisticalEdge: other.statisticalEdge ?? statisticalEdge,
+      pureModelSuggestion:
+          preferNullableString(pureModelSuggestion, other.pureModelSuggestion),
+      outcomeCorrect:
+          preferNullableString(outcomeCorrect, other.outcomeCorrect),
+      isAvailableInBookie: isAvailableInBookie || other.isAvailableInBookie,
+      homeRedCards: other.homeRedCards > 0 || homeRedCards == 0
+          ? other.homeRedCards
+          : homeRedCards,
+      awayRedCards: other.awayRedCards > 0 || awayRedCards == 0
+          ? other.awayRedCards
+          : awayRedCards,
+      winner: preferNullableString(winner, other.winner),
+      leagueStage: preferNullableString(leagueStage, other.leagueStage),
+      season: preferNullableString(season, other.season),
       formHome: other.formHome ?? formHome,
       formAway: other.formAway ?? formAway,
       h2hSummary: other.h2hSummary ?? h2hSummary,

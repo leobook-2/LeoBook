@@ -81,9 +81,13 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         await _authRepo.updatePhone(widget.phone);
         channelName = 'SMS';
       } else {
-        final channel = _isSmsFallback ? OtpChannel.sms : OtpChannel.whatsapp;
-        await _authRepo.sendOtp(widget.phone, channel: channel);
-        channelName = channel == OtpChannel.sms ? 'SMS' : 'WhatsApp';
+        final preferredChannel =
+            _isSmsFallback ? OtpChannel.sms : OtpChannel.whatsapp;
+        final deliveredChannel = await _authRepo.sendOtp(
+          widget.phone,
+          channel: preferredChannel,
+        );
+        channelName = deliveredChannel == OtpChannel.sms ? 'SMS' : 'WhatsApp';
       }
 
       if (!mounted) return;
@@ -123,7 +127,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
       final userId = supabase.auth.currentUser?.id;
       if (userId != null) {
-        await supabase.from('profiles').update({'phone_verified': true}).eq('id', userId);
+        await supabase
+            .from('profiles')
+            .update({'phone_verified': true}).eq('id', userId);
         await supabase.auth.updateUser(
           UserAttributes(phone: widget.phone, data: {'phone_verified': true}),
         );
@@ -171,7 +177,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         appBar: AppBar(
           title: Text(
             'Verification Code',
-            style: GoogleFonts.lexend(fontSize: 18, fontWeight: FontWeight.w600),
+            style:
+                GoogleFonts.lexend(fontSize: 18, fontWeight: FontWeight.w600),
           ),
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -191,9 +198,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _isSmsFallback ? Icons.sms_outlined : Icons.forum_outlined,
+                      Icons.mark_chat_unread_outlined,
                       size: 64,
-                      color: _isSmsFallback ? AppColors.primary : const Color(0xFF25D366),
+                      color: AppColors.primary,
                     ),
                     const SizedBox(height: 24),
                     Text(
@@ -220,7 +227,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.neutral800,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.08)),
                       ),
                       child: TextField(
                         controller: _otpController,
@@ -263,8 +271,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.black,
                         padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.3),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                        disabledBackgroundColor:
+                            AppColors.primary.withValues(alpha: 0.3),
                       ),
                       onPressed: _isLoading ? null : _verifyOtp,
                       child: _isLoading
@@ -300,10 +310,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           onTap: _canResend ? _handleResend : null,
                           child: Text(
                             _canResend
-                                ? (_isSmsFallback ? 'Send via SMS' : 'Resend via WhatsApp')
+                                ? (_isSmsFallback
+                                    ? 'Send via SMS'
+                                    : 'Resend via WhatsApp')
                                 : 'Resend in ${_countdown}s',
                             style: GoogleFonts.lexend(
-                              color: _canResend ? AppColors.primary : AppColors.textDisabled,
+                              color: _canResend
+                                  ? AppColors.primary
+                                  : AppColors.textDisabled,
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
                             ),

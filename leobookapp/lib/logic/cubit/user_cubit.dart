@@ -144,6 +144,14 @@ class UserCubit extends Cubit<UserState> {
     if (user.id == 'guest') return;
 
     try {
+      if (enabled && (password == null || password.trim().isEmpty)) {
+        emit(UserError(
+          user: user,
+          message: 'Enter your current password to enable biometrics.',
+        ));
+        return;
+      }
+
       await _authRepo.updateUserMetadata({'biometrics_enabled': enabled});
 
       if (enabled && password != null) {
@@ -159,8 +167,16 @@ class UserCubit extends Cubit<UserState> {
 
       final updated = user.copyWith(isBiometricsEnabled: enabled);
       _emitCorrectState(updated);
-    } catch (_) {
-      emit(UserError(user: user, message: 'Failed to update biometrics.'));
+    } catch (e) {
+      emit(UserError(
+        user: user,
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: enabled
+              ? 'Failed to enable biometrics.'
+              : 'Failed to update biometrics.',
+        ),
+      ));
     }
   }
 
@@ -237,7 +253,9 @@ class UserCubit extends Cubit<UserState> {
     emit(UserLoading(user: state.user));
     try {
       final response = await _authRepo.signUpWithEmail(email, password);
-      if (response.user != null) {
+      if (response.session == null) {
+        emit(UserInitial(user: state.user));
+      } else if (response.user != null) {
         _emitCorrectState(UserModel.fromSupabaseUser(response.user!));
       } else {
         emit(UserInitial(user: state.user));
@@ -259,7 +277,9 @@ class UserCubit extends Cubit<UserState> {
       final response = await _authRepo.signInWithEmail(email, password);
       if (response.user != null) {
         final model = UserModel.fromSupabaseUser(response.user!);
-        if (model.isProfileComplete && model.isPhoneVerified && model.phone != null) {
+        if (model.isProfileComplete &&
+            model.isPhoneVerified &&
+            model.phone != null) {
           TwilioService.sendDeviceLoginNotification(model.phone!);
         }
         _emitCorrectState(model);
@@ -281,8 +301,10 @@ class UserCubit extends Cubit<UserState> {
   }
 
   Future<void> sendPasswordReset(String email) async {
+    emit(UserLoading(user: state.user));
     try {
       await _authRepo.sendPasswordReset(email);
+      emit(UserInitial(user: state.user));
     } catch (e) {
       emit(UserError(
         user: state.user,

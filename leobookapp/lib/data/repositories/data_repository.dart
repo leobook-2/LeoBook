@@ -63,7 +63,7 @@ class DataRepository {
   }
 
   /// Merge schedule rows with prediction data.
-  /// Predictions overlay schedule fields (prediction data wins on conflict).
+  /// Schedule rows stay authoritative; predictions only enrich them.
   List<MatchModel> _mergeSchedulesWithPredictions(
     List<dynamic> scheduleRows,
     Map<String, Map<String, dynamic>> predMap,
@@ -71,8 +71,10 @@ class DataRepository {
     return scheduleRows.map((row) {
       final fid = row['fixture_id']?.toString() ?? '';
       final pred = predMap[fid];
-      final merged = pred != null ? {...row, ...pred} : row;
-      return MatchModel.fromCsv(merged, pred != null ? merged : null);
+      return MatchModel.fromCsv(
+        Map<String, dynamic>.from(row as Map),
+        pred != null ? Map<String, dynamic>.from(pred) : null,
+      );
     }).toList();
   }
 
@@ -162,9 +164,7 @@ class DataRepository {
       if (cachedString != null) {
         try {
           final List<dynamic> cachedData = jsonDecode(cachedString);
-          return cachedData
-              .map((row) => MatchModel.fromCsv(row, row))
-              .toList();
+          return cachedData.map((row) => MatchModel.fromCsv(row, row)).toList();
         } catch (cacheError) {
           debugPrint("Failed to load from cache: $cacheError");
         }
@@ -276,8 +276,11 @@ class DataRepository {
       try {
         await prefs.setString(_keyRecommended, jsonEncode(listToCache));
       } catch (e) {
-        debugPrint('Warning: Could not save recommendations cache due to size limit: $e');
-        try { await prefs.remove(_keyRecommended); } catch (_) {}
+        debugPrint(
+            'Warning: Could not save recommendations cache due to size limit: $e');
+        try {
+          await prefs.remove(_keyRecommended);
+        } catch (_) {}
       }
 
       return (response)
@@ -300,13 +303,14 @@ class DataRepository {
     }
   }
 
-  Future<List<StandingModel>> fetchStandings({required String leagueId, String? season}) async {
+  Future<List<StandingModel>> fetchStandings(
+      {required String leagueId, String? season}) async {
     try {
       var query = _supabase
           .from('computed_standings_mv')
           .select()
           .eq('league_id', leagueId);
-      
+
       if (season != null) {
         query = query.eq('season', season);
       }
@@ -371,7 +375,8 @@ class DataRepository {
 
   Future<Map<String, String>> fetchTeamCrests() async {
     try {
-      final response = await _supabase.from('teams').select('team_name, team_crest');
+      final response =
+          await _supabase.from('teams').select('team_name, team_crest');
       final Map<String, String> crests = {};
       for (var row in (response as List)) {
         if (row['team_name'] != null && row['team_crest'] != null) {
@@ -446,7 +451,8 @@ class DataRepository {
     });
   }
 
-  Stream<List<StandingModel>> watchStandings({required String leagueId, String? season}) {
+  Stream<List<StandingModel>> watchStandings(
+      {required String leagueId, String? season}) {
     final controller = StreamController<List<StandingModel>>.broadcast();
 
     void fetchAndEmit() async {
@@ -463,19 +469,21 @@ class DataRepository {
 
     // Listen to underlying schedules table for changes since computed_standings view doesn't emit realtime events natively
     final channel = _supabase.channel('schedules:standings-$leagueId');
-    channel.onPostgresChanges(
-      event: PostgresChangeEvent.all,
-      schema: 'public',
-      table: 'schedules',
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'league_id',
-        value: leagueId,
-      ),
-      callback: (payload) {
-        fetchAndEmit();
-      },
-    ).subscribe();
+    channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'schedules',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'league_id',
+            value: leagueId,
+          ),
+          callback: (payload) {
+            fetchAndEmit();
+          },
+        )
+        .subscribe();
 
     controller.onCancel = () {
       _supabase.removeChannel(channel);
@@ -483,7 +491,6 @@ class DataRepository {
 
     return controller.stream;
   }
-
 
   Stream<Map<String, String>> watchTeamCrestUpdates() {
     return _supabase.from('teams').stream(primaryKey: ['team_id']).map((rows) {
@@ -519,7 +526,8 @@ class DataRepository {
   Stream<List<Map<String, dynamic>>> watchMatchOdds(String fixtureId) {
     return _supabase
         .from('match_odds')
-        .stream(primaryKey: ['fixture_id', 'market_id', 'exact_outcome', 'line'])
+        .stream(
+            primaryKey: ['fixture_id', 'market_id', 'exact_outcome', 'line'])
         .eq('fixture_id', fixtureId)
         .map((rows) => List<Map<String, dynamic>>.from(rows));
   }
@@ -576,10 +584,8 @@ class DataRepository {
     final List<dynamic> allRows = [];
     int from = 0;
     for (int page = 0; page < maxPages; page++) {
-      var query = _supabase
-          .from('schedules')
-          .select()
-          .eq('league_id', leagueId);
+      var query =
+          _supabase.from('schedules').select().eq('league_id', leagueId);
       if (season != null) {
         query = query.eq('season', season);
       }
@@ -623,6 +629,7 @@ class DataRepository {
       return [];
     }
   }
+
   Future<List<String>> fetchLeagueSeasons(String leagueId) async {
     try {
       // Fetch distinct seasons from schedules for this league

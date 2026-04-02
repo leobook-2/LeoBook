@@ -2,7 +2,7 @@
 
 **Topic:** Password-Based Auth, WhatsApp/SMS Fallbacks, and Biometric Integration
 **Date:** 2026-03-29
-**Status:** Approved (Brainstorming Phase Complete)
+**Status:** Implemented in app (v9.5.9) with edge-function-backed user checks, login alerts, mobile redirect repair, and settings-managed biometrics
 
 ## 1. Goal
 Implement a production-grade authentication flow that supports password-based sign-ins, maintains the existing three-button UI, handles new user registration via WhatsApp/SMS OTP, and introduces automatic (but dismissible) biometric authentication.
@@ -47,3 +47,12 @@ Implement a production-grade authentication flow that supports password-based si
     - Test registration flow (WhatsApp -> SMS -> Profile Setup).
     - Test login flow (Email notification with correct IP/Device info).
     - Test Biometric auto-trigger and "Dismiss" behavior.
+
+## 6. Implementation Notes (v9.5.9)
+- checkUserStatus(identifier) now resolves through a Supabase Edge Function (supabase/functions/check-user-status) instead of client-side profiles table reads.
+- Login alert emails now flow through supabase/functions/trigger-email with device metadata from device_info_plus and forwarded IP extraction at the edge.
+- ProfileSetupScreen now routes back to LoginScreen instead of popping into an empty navigator stack.
+- OTP, password, email, and biometric flows now converge on the same auth state gating in UserCubit.
+- Mobile auth emails now target the LeoBook app callback instead of localhost-style redirects.
+- Biometric app access can now be enabled or disabled directly from the account/settings screen.
+

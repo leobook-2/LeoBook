@@ -3,8 +3,8 @@
 **Developer**: Materialless LLC
 **Chief Engineer**: Emenike Chinenye James
 **Powered by**: Rule Engine + Neural RL Stairway Engine
-**Architecture**: v9.5.7 "Stairway Engine" (All files ≤500 lines · Fully Modular · Season-Aware RL Weighting · Data Contract)
-**App Version**: 9.5.7 ([pubspec.yaml](leobookapp/pubspec.yaml) aligned with `LEOBOOK_VERSION` in `Core/Utils/constants.py`)
+**Architecture**: v9.5.9 "Stairway Engine" (All files ≤500 lines · Fully Modular · Season-Aware RL Weighting · Data Contract)
+**App Version**: 9.5.9 ([pubspec.yaml](leobookapp/pubspec.yaml) aligned with `LEOBOOK_VERSION` in `Core/Utils/constants.py`)
 
 ---
 
@@ -290,5 +290,13 @@ flutter build apk --release   # Production APK
 ```
 ---
 
-*Last updated: 2026-03-31 — v9.5.7 — Chapter 1 Hardening: All-or-Nothing Transactions, Strict Data Contract (data_contract.py), AI Rationale JSONB serialization, MatchRationaleSheet UI.*
+### v9.5.9 auth and prediction update
+
+- Mobile email verification, magic-link, reset, and OAuth flows now target the LeoBook app callback instead of localhost-style redirects.
+- OTP requests now wait for real send success before navigating and fall back more safely between WhatsApp and SMS channels.
+- Prediction rows now enrich schedule rows without blanking out fixtures, so dates with predictions continue rendering in the UI.
+- Biometric app access can now be managed directly from the account/settings screen.
+
+*Last updated: 2026-04-02 - v9.5.9 - Auth redirect repair, OTP delivery flow hardening, prediction merge fixes, and biometric settings controls.*
 *LeoBook Engineering Team — Materialless LLC*
+

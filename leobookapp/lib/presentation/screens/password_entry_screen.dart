@@ -35,16 +35,24 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
     context.read<UserCubit>().signInWithPassword(widget.identifier, password);
   }
 
-  void _forgotPassword() {
+  Future<void> _forgotPassword() async {
     if (widget.identifier.contains('@')) {
-      context.read<UserCubit>().sendPasswordReset(widget.identifier);
+      await context.read<UserCubit>().sendPasswordReset(widget.identifier);
+      if (!mounted || context.read<UserCubit>().state is UserError) {
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Reset link sent to your email.')),
       );
       return;
     }
 
-    context.read<UserCubit>().sendPhoneOtp(widget.identifier);
+    await context.read<UserCubit>().sendPhoneOtp(widget.identifier);
+    if (!mounted || context.read<UserCubit>().state is UserError) {
+      return;
+    }
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => OtpVerificationScreen(phone: widget.identifier),
@@ -88,7 +96,8 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 420),
-                padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 32),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 40, horizontal: 32),
                 decoration: BoxDecoration(
                   color: AppColors.neutral800,
                   borderRadius: BorderRadius.circular(24),
@@ -141,7 +150,8 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
                               controller: _passwordController,
                               obscureText: _obscurePassword,
                               autofocus: true,
-                              style: GoogleFonts.lexend(fontSize: 16, color: Colors.white),
+                              style: GoogleFonts.lexend(
+                                  fontSize: 16, color: Colors.white),
                               decoration: InputDecoration(
                                 hintText: 'Password',
                                 hintStyle: GoogleFonts.lexend(
@@ -158,7 +168,8 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
                             ),
                           ),
                           GestureDetector(
-                            onTap: () => setState(() => _obscurePassword = !_obscurePassword),
+                            onTap: () => setState(
+                                () => _obscurePassword = !_obscurePassword),
                             child: Padding(
                               padding: const EdgeInsets.only(right: 16),
                               child: Icon(
@@ -187,7 +198,8 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
                               borderRadius: BorderRadius.circular(32),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.primary.withValues(alpha: 0.2),
+                                  color:
+                                      AppColors.primary.withValues(alpha: 0.2),
                                   blurRadius: 20,
                                   offset: const Offset(0, 8),
                                 ),

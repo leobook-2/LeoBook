@@ -48,7 +48,9 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
     final missing = <String>[];
     if (password.length < 8) missing.add('at least 8 characters');
     if (!password.contains(RegExp(r'[a-z]'))) missing.add('a lowercase letter');
-    if (!password.contains(RegExp(r'[A-Z]'))) missing.add('an uppercase letter');
+    if (!password.contains(RegExp(r'[A-Z]'))) {
+      missing.add('an uppercase letter');
+    }
     if (!password.contains(RegExp(r'[0-9]'))) missing.add('a digit');
     if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/~`]'))) {
       missing.add('a special character');
@@ -81,6 +83,25 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
     } else {
       cubit.signInWithEmail(email, password);
     }
+  }
+
+  Future<void> _runEmailAction(
+    Future<void> Function(UserCubit cubit) action,
+    String successMessage,
+  ) async {
+    final cubit = context.read<UserCubit>();
+    await action(cubit);
+
+    if (!mounted || cubit.state is UserError) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(successMessage),
+        backgroundColor: AppColors.primary,
+      ),
+    );
   }
 
   void _navigateToMain() {
@@ -145,7 +166,8 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                 return Center(
                   child: Container(
                     width: 420,
-                    padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 32),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 40, horizontal: 32),
                     decoration: BoxDecoration(
                       color: AppColors.neutral800,
                       borderRadius: BorderRadius.circular(20),
@@ -169,7 +191,8 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
               return Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     child: _buildHeader(),
                   ),
                   Expanded(
@@ -249,7 +272,8 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(left: 16),
-                child: Icon(Icons.lock_outline, color: AppColors.textTertiary, size: 20),
+                child: Icon(Icons.lock_outline,
+                    color: AppColors.textTertiary, size: 20),
               ),
               Expanded(
                 child: TextField(
@@ -263,12 +287,14 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                       fontSize: 15,
                     ),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 16),
                   ),
                 ),
               ),
               GestureDetector(
-                onTap: () => setState(() => _obscurePassword = !_obscurePassword),
+                onTap: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
                 child: Padding(
                   padding: const EdgeInsets.only(right: 16),
                   child: Icon(
@@ -287,7 +313,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {
+              onPressed: () async {
                 final email = _emailController.text.trim();
                 if (email.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -295,14 +321,16 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                   );
                   return;
                 }
-                context.read<UserCubit>().sendPasswordReset(email);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Reset link sent to your email.')),
+
+                await _runEmailAction(
+                  (cubit) => cubit.sendPasswordReset(email),
+                  'Reset link sent to your email.',
                 );
               },
               child: Text(
                 'Forgot Password?',
-                style: GoogleFonts.lexend(fontSize: 13, color: AppColors.textTertiary),
+                style: GoogleFonts.lexend(
+                    fontSize: 13, color: AppColors.textTertiary),
               ),
             ),
           ),
@@ -346,7 +374,7 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
         if (!_isSignUp)
           Center(
             child: TextButton(
-              onPressed: () {
+              onPressed: () async {
                 final email = _emailController.text.trim();
                 if (email.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -354,9 +382,10 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                   );
                   return;
                 }
-                context.read<UserCubit>().sendMagicLink(email);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Magic link sent to your email.')),
+
+                await _runEmailAction(
+                  (cubit) => cubit.sendMagicLink(email),
+                  'Magic link sent to your email.',
                 );
               },
               child: Text(
@@ -429,7 +458,8 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                   fontSize: 15,
                 ),
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
               ),
             ),
           ),

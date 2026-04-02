@@ -12,6 +12,8 @@ import '../services/twilio_service.dart';
 
 class AuthRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
+  static const String _defaultMobileAuthRedirectUrl =
+      'com.materialless.leobookapp://login-callback';
 
   /// Stream of Supabase Auth state changes
   Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
@@ -29,8 +31,10 @@ class AuthRepository {
     Object error, {
     String fallbackMessage = 'Something went wrong. Please try again.',
   }) {
-    final statusCode = error is AuthException ? error.statusCode?.toString() : '';
-    final code = error is AuthApiException ? (error.code ?? '').toLowerCase() : '';
+    final statusCode =
+        error is AuthException ? error.statusCode?.toString() : '';
+    final code =
+        error is AuthApiException ? (error.code ?? '').toLowerCase() : '';
     final message = error.toString().toLowerCase();
     final combined = '$code $statusCode $message';
 
@@ -49,18 +53,51 @@ class AuthRepository {
 
     if (combined.contains('phone_exists') ||
         combined.contains('already been registered') ||
-        (combined.contains('phone number') && combined.contains('registered')) ||
+        (combined.contains('phone number') &&
+            combined.contains('registered')) ||
         (combined.contains('duplicate') && combined.contains('phone'))) {
       return 'This phone number is already linked to another account.';
     }
 
     if (combined.contains('email_exists') ||
         combined.contains('user already registered') ||
-        (combined.contains('already registered') && combined.contains('email'))) {
+        (combined.contains('already registered') &&
+            combined.contains('email'))) {
       return 'An account already exists with this email.';
     }
 
+    if (combined.contains('unsupported channel') ||
+        (combined.contains('whatsapp') && combined.contains('not available'))) {
+      return 'That verification channel is not available right now. Please try SMS instead.';
+    }
+
+    if ((combined.contains('sms') && combined.contains('provider')) ||
+        (combined.contains('phone') && combined.contains('provider')) ||
+        combined.contains('twilio') ||
+        combined.contains('messagebird') ||
+        combined.contains('vonage')) {
+      return 'Phone verification is temporarily unavailable. Please try again shortly.';
+    }
+
+    if (combined.contains('redirect') &&
+        (combined.contains('invalid') || combined.contains('not allowed'))) {
+      return 'This email link is not configured correctly yet. Please try again later.';
+    }
+
     return fallbackMessage;
+  }
+
+  String get _authRedirectUrl {
+    if (kIsWeb) {
+      return Uri.base.origin;
+    }
+
+    final configured = dotenv.env['AUTH_REDIRECT_URL']?.trim();
+    if (configured != null && configured.isNotEmpty) {
+      return configured;
+    }
+
+    return _defaultMobileAuthRedirectUrl;
   }
 
   // ─── Google Sign-In ──────────────────────────────────────────────
@@ -80,7 +117,7 @@ class AuthRepository {
     try {
       final success = await _supabase.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: kIsWeb ? Uri.base.origin : null,
+        redirectTo: _authRedirectUrl,
       );
       if (!success) {
         throw 'Google OAuth redirect failed.';
@@ -144,6 +181,7 @@ class AuthRepository {
       return await _supabase.auth.signUp(
         email: email,
         password: password,
+        emailRedirectTo: _authRedirectUrl,
       );
     } catch (e) {
       debugPrint('[AuthRepository] Email sign-up error: $e');
@@ -169,7 +207,8 @@ class AuthRepository {
   }
 
   /// Sign in with identifier (email or phone) and password.
-  Future<AuthResponse> signInWithPassword(String identifier, String password) async {
+  Future<AuthResponse> signInWithPassword(
+      String identifier, String password) async {
     try {
       final response = await _supabase.auth.signInWithPassword(
         email: identifier.contains('@') ? identifier : null,
@@ -202,13 +241,36 @@ class AuthRepository {
   // ─── Phone OTP ───────────────────────────────────────────────────
 
   /// Send OTP via WhatsApp or SMS.
-  Future<void> sendOtp(String phone, {OtpChannel channel = OtpChannel.whatsapp}) async {
-    try {
-      await _supabase.auth.signInWithOtp(
+  Future<OtpChannel> sendOtp(
+    String phone, {
+    OtpChannel channel = OtpChannel.sms,
+  }) async {
+    Future<void> sendWithChannel(OtpChannel deliveryChannel) {
+      return _supabase.auth.signInWithOtp(
         phone: phone,
-        channel: channel,
+        channel: deliveryChannel,
       );
+    }
+
+    try {
+      await sendWithChannel(channel);
+      return channel;
     } catch (e) {
+      final alternateChannel =
+          channel == OtpChannel.whatsapp ? OtpChannel.sms : OtpChannel.whatsapp;
+
+      if (_shouldTryAlternateOtpChannel(e)) {
+        try {
+          await sendWithChannel(alternateChannel);
+          return alternateChannel;
+        } catch (alternateError) {
+          debugPrint(
+            '[AuthRepository] Alternate OTP channel '
+            '($alternateChannel) failed after $channel: $alternateError',
+          );
+        }
+      }
+
       debugPrint('[AuthRepository] Send OTP error: $e');
       rethrow;
     }
@@ -227,7 +289,8 @@ class AuthRepository {
   }
 
   /// Verify OTP token (supports sms and phoneChange).
-  Future<AuthResponse> verifyOtp(String phone, String token, {OtpType type = OtpType.sms}) async {
+  Future<AuthResponse> verifyOtp(String phone, String token,
+      {OtpType type = OtpType.sms}) async {
     try {
       return await _supabase.auth.verifyOTP(
         phone: phone,
@@ -247,7 +310,7 @@ class AuthRepository {
     try {
       await _supabase.auth.signInWithOtp(
         email: email,
-        emailRedirectTo: kIsWeb ? Uri.base.origin : null,
+        emailRedirectTo: _authRedirectUrl,
       );
     } catch (e) {
       debugPrint('[AuthRepository] Send Magic Link error: $e');
@@ -260,7 +323,7 @@ class AuthRepository {
     try {
       await _supabase.auth.resetPasswordForEmail(
         email,
-        redirectTo: kIsWeb ? Uri.base.origin : null,
+        redirectTo: _authRedirectUrl,
       );
     } catch (e) {
       debugPrint('[AuthRepository] Password Reset error: $e');
@@ -279,7 +342,8 @@ class AuthRepository {
   }
 
   /// Trigger custom Supabase Edge Function for premium emails
-  Future<void> triggerEmailEdgeFunction(String template, Map<String, dynamic> data) async {
+  Future<void> triggerEmailEdgeFunction(
+      String template, Map<String, dynamic> data) async {
     try {
       await _supabase.functions.invoke(
         'trigger-email',
@@ -390,7 +454,7 @@ class AuthRepository {
 
   // ─── Legacy (Aliases for UserCubit) ─────────────────────────────
 
-  Future<void> sendPhoneOtp(String phone) async => sendOtp(phone);
+  Future<OtpChannel> sendPhoneOtp(String phone) async => sendOtp(phone);
   Future<AuthResponse> verifyPhoneOtp(String phone, String token) async =>
       verifyOtp(phone, token);
 
@@ -419,5 +483,17 @@ class AuthRepository {
       debugPrint('[AuthRepository] Update metadata error: $e');
       rethrow;
     }
+  }
+
+  bool _shouldTryAlternateOtpChannel(Object error) {
+    final message = error.toString().toLowerCase();
+
+    return message.contains('unsupported channel') ||
+        message.contains('sms provider') ||
+        message.contains('phone provider') ||
+        message.contains('twilio') ||
+        message.contains('whatsapp') ||
+        message.contains('messagebird') ||
+        message.contains('vonage');
   }
 }
