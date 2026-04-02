@@ -18,6 +18,23 @@ PUBSPEC="$APP_DIR/pubspec.yaml"
 APK_OUTPUT="$APP_DIR/build/app/outputs/flutter-apk"
 KEY_PROPERTIES_FILE="$ANDROID_DIR/key.properties"
 LOCAL_PROPERTIES_FILE="$ANDROID_DIR/local.properties"
+TEMP_SIGNING_DIR=""
+KEY_PROPERTIES_BACKUP=""
+RESTORE_KEY_PROPERTIES=0
+
+cleanup_temp_signing() {
+  if [ -n "$KEY_PROPERTIES_BACKUP" ] && [ -f "$KEY_PROPERTIES_BACKUP" ]; then
+    mv "$KEY_PROPERTIES_BACKUP" "$KEY_PROPERTIES_FILE"
+  elif [ "$RESTORE_KEY_PROPERTIES" = "1" ] && [ -f "$KEY_PROPERTIES_FILE" ]; then
+    rm -f "$KEY_PROPERTIES_FILE"
+  fi
+
+  if [ -n "$TEMP_SIGNING_DIR" ] && [ -d "$TEMP_SIGNING_DIR" ]; then
+    rm -rf "$TEMP_SIGNING_DIR"
+  fi
+}
+
+trap cleanup_temp_signing EXIT
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -135,6 +152,78 @@ resolve_android_tool() {
   fi
 
   printf '%s' "$resolved_path"
+}
+
+first_non_empty_env() {
+  local var_name
+  for var_name in "$@"; do
+    if [ -n "${!var_name:-}" ]; then
+      printf '%s' "${!var_name}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+prepare_release_signing() {
+  if [ -f "$KEY_PROPERTIES_FILE" ]; then
+    return 0
+  fi
+
+  local keystore_base64=""
+  local keystore_path=""
+  local store_password=""
+  local key_alias=""
+  local key_password=""
+
+  keystore_base64="$(first_non_empty_env LEOBOOK_KEYSTORE_BASE64 ANDROID_KEYSTORE_BASE64 KEYSTORE_BASE64 || true)"
+  keystore_path="$(first_non_empty_env LEOBOOK_KEYSTORE_PATH ANDROID_KEYSTORE_PATH KEYSTORE_PATH || true)"
+  store_password="$(first_non_empty_env LEOBOOK_STORE_PASSWORD ANDROID_KEYSTORE_PASSWORD STORE_PASSWORD || true)"
+  key_alias="$(first_non_empty_env LEOBOOK_KEY_ALIAS ANDROID_KEY_ALIAS KEY_ALIAS || true)"
+  key_password="$(first_non_empty_env LEOBOOK_KEY_PASSWORD ANDROID_KEY_PASSWORD KEY_PASSWORD || true)"
+
+  if [ -z "$keystore_base64" ] && [ -z "$keystore_path" ]; then
+    echo "ERROR: Release signing is not configured."
+    echo "Add android/key.properties and the keystore file, or provide Codespaces secrets:"
+    echo "  LEOBOOK_KEYSTORE_BASE64"
+    echo "  LEOBOOK_STORE_PASSWORD"
+    echo "  LEOBOOK_KEY_ALIAS"
+    echo "  LEOBOOK_KEY_PASSWORD"
+    exit 1
+  fi
+
+  if [ -z "$store_password" ] || [ -z "$key_alias" ] || [ -z "$key_password" ]; then
+    echo "ERROR: Missing keystore credentials."
+    echo "Expected LEOBOOK_STORE_PASSWORD, LEOBOOK_KEY_ALIAS, and LEOBOOK_KEY_PASSWORD."
+    exit 1
+  fi
+
+  TEMP_SIGNING_DIR="$(mktemp -d)"
+  local temp_keystore="$TEMP_SIGNING_DIR/leobook-release.jks"
+
+  if [ -n "$keystore_base64" ]; then
+    printf '%s' "$keystore_base64" | base64 --decode > "$temp_keystore"
+  else
+    if [ ! -f "$keystore_path" ]; then
+      echo "ERROR: Keystore file not found at $keystore_path"
+      exit 1
+    fi
+    cp "$keystore_path" "$temp_keystore"
+  fi
+
+  if [ -f "$KEY_PROPERTIES_FILE" ]; then
+    KEY_PROPERTIES_BACKUP="$TEMP_SIGNING_DIR/key.properties.backup"
+    cp "$KEY_PROPERTIES_FILE" "$KEY_PROPERTIES_BACKUP"
+  else
+    RESTORE_KEY_PROPERTIES=1
+  fi
+
+  cat > "$KEY_PROPERTIES_FILE" << EOF
+storePassword=$store_password
+keyPassword=$key_password
+keyAlias=$key_alias
+storeFile=$temp_keystore
+EOF
 }
 
 normalize_fingerprint() {
@@ -271,11 +360,13 @@ upload_file() {
 
 require_command flutter
 require_command curl
+require_command base64
 
 KEYTOOL_BIN="$(resolve_java_tool keytool)"
 ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$(resolve_android_sdk_root || true)}"
 APKSIGNER_BIN="$(resolve_android_tool apksigner)"
 AAPT_BIN="$(resolve_android_tool aapt)"
+prepare_release_signing
 
 VERSION="$(grep '^version:' "$PUBSPEC" | head -1 | sed 's/version: *//;s/+.*//')"
 if [ -z "$VERSION" ]; then
