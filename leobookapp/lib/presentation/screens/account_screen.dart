@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/core/theme/leo_typography.dart';
@@ -14,6 +15,9 @@ import 'package:leobookapp/data/models/user_model.dart';
 import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import 'package:leobookapp/presentation/screens/login_screen.dart';
 import 'package:leobookapp/presentation/screens/super_leobook_screen.dart';
+import 'package:leobookapp/presentation/screens/subscription_screen.dart';
+import 'package:leobookapp/presentation/screens/stairway_screen.dart';
+import 'package:leobookapp/presentation/screens/accuracy_dashboard_screen.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -66,6 +70,52 @@ class AccountScreen extends StatelessWidget {
 
                       // ── Super LeoBook Upsell ──────────────────
                       _buildSuperUpsell(context),
+                      const SizedBox(height: 28),
+
+                      // ── Pro Features ───────────────────────────
+                      _sectionLabel('Pro Features'),
+                      const SizedBox(height: 8),
+                      _glassGroup([
+                        _settingsTile(
+                          icon: Icons.stairs_rounded,
+                          title: 'Project Stairway',
+                          subtitle: 'ROI & cycle dashboard',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => BlocProvider.value(
+                                value: context.read<UserCubit>(),
+                                child: const StairwayScreen(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        _settingsTile(
+                          icon: Icons.analytics_outlined,
+                          title: 'Accuracy Dashboard',
+                          subtitle: 'Win rates & ROI history',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => BlocProvider.value(
+                                value: context.read<UserCubit>(),
+                                child: const AccuracyDashboardScreen(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        _settingsTile(
+                          icon: Icons.workspace_premium_rounded,
+                          title: 'Manage Subscription',
+                          subtitle: 'Paystack · Stripe',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => BlocProvider.value(
+                                value: context.read<UserCubit>(),
+                                child: const SubscriptionScreen(),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ]),
                       const SizedBox(height: 28),
 
                       // ── General ────────────────────────────────
