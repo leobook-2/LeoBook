@@ -53,6 +53,12 @@ from Data.Access.db_helpers_audit import (
 # ─── Re-export from market_evaluator ───
 from Data.Access.market_evaluator import evaluate_market_outcome  # noqa
 
+# ─── Re-exports from rl_config_crud ───
+from Data.Access.rl_config_crud import (
+    get_rl_config, save_rl_config, update_rl_config_field,
+    delete_rl_config, list_rl_configs, apply_rl_config_to_pipeline,
+)  # noqa
+
 
 # ─── Module-level connection (lazy init) ───
 
