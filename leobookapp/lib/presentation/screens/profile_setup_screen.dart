@@ -13,7 +13,6 @@ import 'package:leobookapp/data/repositories/auth_repository.dart';
 import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import 'package:leobookapp/presentation/screens/login_screen.dart';
 import 'package:leobookapp/presentation/screens/main_screen.dart';
-import 'package:leobookapp/presentation/screens/otp_verification_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -34,7 +33,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   bool _isLoading = false;
-  bool _phoneNeedsVerification = true;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _acceptedTerms = false;
@@ -50,7 +48,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     _emailController.text = user.email ?? '';
 
     if (user.phone != null && user.phone!.trim().length > 5) {
-      _phoneNeedsVerification = false;
       _phoneController.text = user.phone!;
     }
 
@@ -90,44 +87,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  Future<void> _sendPhoneOtp() async {
-    if (_phoneController.text.isEmpty) {
-      _showMessage('Please enter your phone number');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      final formattedPhone = toE164(_selectedCountryCode, _phoneController.text);
-      await _authRepo.updatePhone(formattedPhone);
-
-      if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => OtpVerificationScreen(
-            phone: formattedPhone,
-            isPhoneChange: true,
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showMessage(AuthRepository.mapAuthError(e));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Future<void> _completeProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
     if (!_acceptedTerms) {
       _showMessage('Please accept the Terms and Privacy Policy');
-      return;
-    }
-
-    if (_phoneNeedsVerification) {
-      _showMessage('Please verify your phone number using the button below first');
       return;
     }
 
@@ -145,6 +109,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         return;
       }
 
+      final formattedPhone = _phoneController.text.trim().isEmpty
+          ? null
+          : toE164(_selectedCountryCode, _phoneController.text);
+      final authPhoneVerified =
+          supabase.auth.currentUser?.phone != null &&
+              supabase.auth.currentUser!.phone!.trim().isNotEmpty;
+
       await supabase.auth.updateUser(
         UserAttributes(
           password: password,
@@ -153,7 +124,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             'username': _usernameController.text.trim(),
             'profile_completed': true,
             'biometrics_enabled': _biometricsEnabled,
-            'phone_verified': true,
+            'phone_verified': authPhoneVerified,
           },
         ),
       );
@@ -161,9 +132,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       await supabase.from('profiles').upsert({
         'id': currentUser.id,
         'email': currentUser.email,
-        'phone': supabase.auth.currentUser?.phone ?? _phoneController.text.trim(),
+        'phone': formattedPhone ?? supabase.auth.currentUser?.phone,
         'full_name': _usernameController.text.trim(),
-        'phone_verified': true,
+        'phone_verified': authPhoneVerified,
       });
 
       if (_biometricsEnabled) {
@@ -323,7 +294,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ),
               ),
             ),
-            validator: (v) => v!.isEmpty ? 'Phone number required' : null,
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return null;
+              if (v.trim().length < 6) return 'Enter a valid phone or leave blank';
+              return null;
+            },
           ),
           const SizedBox(height: 16),
           TextFormField(
@@ -400,33 +375,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               contentPadding: EdgeInsets.zero,
             ),
           ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.neutral800,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              side: const BorderSide(color: Colors.white10),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              'Phone is optional. SMS/WhatsApp OTP is not used — verification is via email.',
+              style: GoogleFonts.dmSans(
+                fontSize: 12,
+                color: AppColors.textTertiary,
+                height: 1.4,
+              ),
             ),
-            onPressed: _isLoading ? null : _sendPhoneOtp,
-            child: _isLoading
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.forum_outlined, color: Color(0xFF25D366), size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Send WhatsApp OTP',
-                        style: GoogleFonts.dmSans(fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
           ),
           const SizedBox(height: 32),
           Row(

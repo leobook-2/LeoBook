@@ -1,16 +1,18 @@
 // stairway_screen.dart: Project Stairway — step/cycle/ROI dashboard.
 // Part of LeoBook App — Screens
 //
-// Shows current cycle stats, today's recommended picks, and historical ROI.
-// Pro-gated via TierGate (canAccessChapter2).
+// Shows synced stair position (user_stairway_state), accuracy snapshot, picks.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
+import 'package:leobookapp/core/constants/stairway_table.dart';
 import 'package:leobookapp/data/models/recommendation_model.dart';
+import 'package:leobookapp/data/services/user_account_snapshots_service.dart';
 import 'package:leobookapp/logic/cubit/home_cubit.dart';
+import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import 'package:leobookapp/presentation/widgets/shared/tier_gate.dart';
 
 class StairwayScreen extends StatelessWidget {
@@ -19,10 +21,10 @@ class StairwayScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const TierGate(
-      requirement: TierRequirement.canAccessChapter2,
+      requirement: TierRequirement.canViewStairway,
       featureName: 'Project Stairway',
       featureDescription:
-          'Track every cycle, stake, and ROI on your growth journey. Pro only.',
+          'Sign in to track your stair step, weekly cycles, and ROI.',
       child: _StairwayContent(),
     );
   }
@@ -37,8 +39,10 @@ class _StairwayContent extends StatefulWidget {
 
 class _StairwayContentState extends State<_StairwayContent> {
   Map<String, dynamic>? _report;
+  UserStairwaySnapshot? _stairway;
   bool _loading = true;
   String? _error;
+  final UserAccountSnapshotsService _snap = UserAccountSnapshotsService();
 
   @override
   void initState() {
@@ -47,21 +51,29 @@ class _StairwayContentState extends State<_StairwayContent> {
   }
 
   Future<void> _fetchReport() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
+      final sw = await _snap.fetchStairway();
       final data = await Supabase.instance.client
           .from('accuracy_reports')
           .select()
           .order('timestamp', ascending: false)
           .limit(1) as List?;
       setState(() {
+        _stairway = sw;
         _report = (data != null && data.isNotEmpty)
             ? Map<String, dynamic>.from(data.first as Map)
             : null;
         _loading = false;
       });
     } catch (e) {
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -78,6 +90,7 @@ class _StairwayContentState extends State<_StairwayContent> {
             else if (_error != null)
               SliverToBoxAdapter(child: _buildError())
             else ...[
+              SliverToBoxAdapter(child: _buildLiveStairCard()),
               SliverToBoxAdapter(child: _buildCycleCard()),
               SliverToBoxAdapter(child: _buildStatsRow()),
               SliverToBoxAdapter(
@@ -128,6 +141,99 @@ class _StairwayContentState extends State<_StairwayContent> {
             onTap: _fetchReport,
             child: const Icon(Icons.refresh_rounded,
                 color: AppColors.textTertiary, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Live stair (Supabase user_stairway_state) ───────────────────────
+
+  Widget _buildLiveStairCard() {
+    final s = _stairway;
+    final step = s?.currentStep ?? 1;
+    final info = stairwayStepInfo(step);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppColors.neutral800,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'CURRENT STAIR',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textTertiary,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  s == null
+                      ? 'Waiting for sync from Leo worker (--user-id + stairway activity).'
+                      : 'Step $step of 7',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+                if (s != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Stake ₦${info['stake']} · Target odds ${info['odds_target']} · '
+                    'Target payout ₦${info['payout']}',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Completed cycles: ${s.cycleCount} · This ISO week: ${s.weekCyclesCompleted}',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                  if (s.lastResult != null)
+                    Text(
+                      'Last result: ${s.lastResult}',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 11,
+                        color: AppColors.accentPrimary,
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          BlocBuilder<UserCubit, UserState>(
+            builder: (context, st) {
+              final u = st.user;
+              if (!u.isAuthenticated || u.isSuperLeoBook) return const SizedBox.shrink();
+              return Text(
+                'Free plan: up to 2 stairway cycles per week. Super LeoBook: unlimited.',
+                style: GoogleFonts.dmSans(
+                  fontSize: 11,
+                  color: AppColors.textTertiary,
+                  height: 1.4,
+                ),
+              );
+            },
           ),
         ],
       ),

@@ -8,6 +8,14 @@ from typing import List, Dict, Any, Optional
 from Core.Utils.constants import now_ng
 
 
+def infer_flashscore_sport(url: Optional[str]) -> str:
+    """Classify a Flashscore league URL as football or basketball (default: football)."""
+    u = (url or "").lower()
+    if "/basketball/" in u:
+        return "basketball"
+    return "football"
+
+
 def upsert_league(conn: sqlite3.Connection, data: Dict[str, Any], commit: bool = True) -> int:
     """Insert or update a league. Returns the row id."""
     now = now_ng().isoformat()
@@ -143,8 +151,16 @@ def get_all_leagues(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
-def get_active_leagues(conn: sqlite3.Connection, days: int = 7) -> List[Dict[str, Any]]:
-    """Return leagues that have fixtures within ±N days of today (for --refresh)."""
+def get_active_leagues(
+    conn: sqlite3.Connection,
+    days: int = 7,
+    sport: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Return leagues that have fixtures within ±N days of today (for --refresh).
+
+    If ``sport`` is ``\"football\"`` or ``\"basketball\"``, keep only leagues whose
+    Flashscore ``url`` path matches that sport (see :func:`infer_flashscore_sport`).
+    """
     rows = conn.execute(
         """SELECT DISTINCT l.*
            FROM leagues l
@@ -155,4 +171,7 @@ def get_active_leagues(conn: sqlite3.Connection, days: int = 7) -> List[Dict[str
            ORDER BY l.id""",
         (f"-{days}", str(days))
     ).fetchall()
-    return [dict(r) for r in rows]
+    out = [dict(r) for r in rows]
+    if sport:
+        out = [lg for lg in out if infer_flashscore_sport(lg.get("url")) == sport]
+    return out

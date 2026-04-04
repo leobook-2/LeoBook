@@ -144,7 +144,8 @@ class TrainerPhasesMixin:
         raw_scores = None
         try:
             from ..rule_engine import RuleEngine
-            analysis = RuleEngine.analyze(vision_data)
+            cfg = getattr(self, "_rule_engine_config", None)
+            analysis = RuleEngine.analyze(vision_data, config=cfg)
             if analysis.get("type") != "SKIP":
                 raw_scores = analysis.get("raw_scores")
         except Exception:

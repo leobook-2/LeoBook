@@ -141,6 +141,8 @@ class RLTrainer(SeasonsMixin, TrainerPhasesMixin, TrainerIOMixin):
         # so RL can genuinely outperform the expert over time.
         self.kl_weight = 0.3
         self.active_phase: int = 1  # Always set before training; default safe value
+        # Optional RuleConfig when training against a specific saved engine
+        self._rule_engine_config = None
 
     # -------------------------------------------------------------------
     # Training step (PPO gradient update)
@@ -317,6 +319,7 @@ class RLTrainer(SeasonsMixin, TrainerPhasesMixin, TrainerIOMixin):
         limit_days: Optional[int] = None,
         resume: bool = False,
         target_season: Union[str, int] = "current",
+        rule_engine_id: Optional[str] = None,
     ):
         """
         3-Phase Chronological Training with season-aware date selection.
@@ -345,6 +348,18 @@ class RLTrainer(SeasonsMixin, TrainerPhasesMixin, TrainerIOMixin):
 
         conn = _get_conn()
         os.makedirs(MODELS_DIR, exist_ok=True)
+
+        self._rule_engine_config = None
+        if rule_engine_id:
+            try:
+                from Core.Intelligence.rule_engine_manager import RuleEngineManager
+
+                eng = RuleEngineManager.get_engine(rule_engine_id)
+                if eng:
+                    self._rule_engine_config = RuleEngineManager.to_rule_config(eng)
+                    print(f"  [RL] Using rule engine: {eng.get('name', rule_engine_id)} ({rule_engine_id})")
+            except Exception as ex:
+                print(f"  [RL] Could not load rule engine {rule_engine_id!r}: {ex}")
 
         print("\n  ============================================================")
         print(f"  RL TRAINING — PHASE {phase} {'(COLD START)' if cold else ''}")

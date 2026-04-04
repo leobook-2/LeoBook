@@ -4,14 +4,17 @@
 # Functions: load_data(), calculate_market_reliability(), get_recommendations(),
 #            save_recommendations_to_predictions_csv(), AdaptiveRecommender
 #
-# PURPOSE: Select the TOP 20% of predictions from Ch1 P2 for Project Stairway.
-#          Uses EMA-smoothed per-market accuracy to learn which markets are
-#          reliable over time and continuously improve selection quality.
+# PURPOSE: Select recommendations from Ch1 P2 for Project Stairway — per (sport, day)
+#          take ceil(20%) with football.com-listed fixtures ranked first within each bucket;
+#          then build one merged **daily Stairway slip** per calendar day (see build_daily_stairway_slips).
+#          Exports recommender EMA hints for Ch1 P2 (recommender_predictor_hint.json).
+#          Uses EMA-smoothed per-market accuracy to learn which markets are reliable over time.
 
 import os
 import sys
 import argparse
 import json
+import math
 from datetime import datetime, timedelta
 from Core.Utils.constants import now_ng
 from collections import defaultdict
@@ -89,6 +92,104 @@ def classify_tier(likelihood: float) -> int:
         return 3
 
 
+def build_daily_stairway_slips(
+    recommendations: list,
+    *,
+    max_legs: int = None,
+    max_combined_odds: float = 35.0,
+) -> list:
+    """Merge all sports for each calendar day into one ranked accumulator-style slip.
+
+    Legs are greedy-ordered by availability and adaptive score. Each leg must stay
+    within Stairway odds bounds; combined decimal odds are capped at ``max_combined_odds``.
+    """
+    max_legs = max_legs if max_legs is not None else STAIRWAY_DAILY_MAX
+    by_day = defaultdict(list)
+    for r in recommendations:
+        dk = _normalize_date_key(r.get("date") or "")
+        if dk:
+            by_day[dk].append(r)
+
+    slips = []
+    for day in sorted(by_day.keys()):
+        pool = sorted(
+            by_day[day],
+            key=lambda x: (-bool(x.get("is_available")), -float(x.get("score") or 0)),
+        )
+        legs = []
+        prod = 1.0
+        seen_fid = set()
+        for r in pool:
+            if len(legs) >= max_legs:
+                break
+            fid = r.get("fixture_id")
+            if fid and fid in seen_fid:
+                continue
+            ov = r.get("odds")
+            if ov is None:
+                continue
+            try:
+                ov = float(ov)
+            except (TypeError, ValueError):
+                continue
+            if not (STAIRWAY_ODDS_MIN <= ov <= STAIRWAY_ODDS_MAX):
+                continue
+            new_prod = prod * ov
+            if new_prod > max_combined_odds:
+                continue
+            legs.append(r)
+            if fid:
+                seen_fid.add(fid)
+            prod = new_prod
+        if legs:
+            slips.append({
+                "date": day,
+                "leg_count": len(legs),
+                "combined_odds_estimate": round(prod, 3),
+                "legs": legs,
+            })
+    return slips
+
+
+def _export_predictor_hint(recommender: "AdaptiveRecommender") -> None:
+    """Write league/market EMA summaries for optional use in Ch1 P2 (prediction_pipeline)."""
+    path = Path(project_root) / "Data" / "Store" / "recommender_predictor_hint.json"
+    mw = recommender.weights.get("market_weights") or {}
+    lw = recommender.weights.get("league_weights") or {}
+    market_ema = {k: v["ema_acc"] for k, v in mw.items() if v.get("n", 0) >= 5}
+    league_ema = {k: v["ema_acc"] for k, v in lw.items() if v.get("n", 0) >= 5}
+    payload = {
+        "exported_at": now_ng().isoformat(),
+        "source_weights": str(RECOMMENDER_DB),
+        "market_ema": market_ema,
+        "league_ema": league_ema,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[ALGO] recommender_predictor_hint export skipped: {e}")
+
+
+def _normalize_date_key(p_date_str: str) -> str:
+    """Normalize prediction date to YYYY-MM-DD for per-day grouping."""
+    if not p_date_str:
+        return ""
+    s = str(p_date_str).strip()
+    if len(s) >= 10 and s[4:5] == "-" and s[7:8] == "-":
+        return s[:10]
+    try:
+        if "." in s and len(s) >= 10:
+            return datetime.strptime(s[:10], "%d.%m.%Y").strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").strftime("%Y-%m-%d")
+    except Exception:
+        return s
+
+
 # ═══════════════════════════════════════════════════════════════
 # DATA LOADING
 # ═══════════════════════════════════════════════════════════════
@@ -160,6 +261,7 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
     recommender = AdaptiveRecommender()
     learned = recommender.learn(all_predictions)
     print(f"[ALGO] Adaptive recommender trained on {learned} resolved outcomes.")
+    _export_predictor_hint(recommender)
 
     # ── Step 1: Build reliability index (backward-compatible) ──
     reliability = calculate_market_reliability(all_predictions)
@@ -242,6 +344,7 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
             candidates.append({
                 'match': f"{p['home_team']} vs {p['away_team']}",
                 'fixture_id': p.get('fixture_id', ''),
+                'sport': str(p.get('sport') or 'football').lower(),
                 'time': p_time_str,
                 'date': p_date_str,
                 'prediction': p['prediction'],
@@ -262,13 +365,31 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
         except Exception:
             continue
 
-    # ── Step 3: Rank and select top 20% (Stairway constraint: 2-8 per day) ──
-    candidates.sort(key=lambda x: x['score'], reverse=True)
+    # ── Step 3: Per sport + calendar day — football.com listings first, top ceil(20%) per bucket ──
+    bucket_map = defaultdict(list)
+    for c in candidates:
+        dk = _normalize_date_key(c['date'])
+        sk = c.get('sport') or 'football'
+        bucket_map[(sk, dk)].append(c)
 
-    # Top 20% selection with Stairway bounds
-    top_20_pct = max(STAIRWAY_DAILY_MIN, int(len(candidates) * 0.20))
-    top_20_pct = min(top_20_pct, STAIRWAY_DAILY_MAX)
-    recommendations = candidates[:top_20_pct]
+    recommendations = []
+    for key in sorted(bucket_map.keys()):
+        bucket = bucket_map[key]
+        bucket.sort(key=lambda x: (-bool(x['is_available']), -x['score']))
+        if not bucket:
+            continue
+        n_take = max(1, min(STAIRWAY_DAILY_MAX, math.ceil(len(bucket) * 0.20)))
+        n_take = min(n_take, len(bucket))
+        recommendations.extend(bucket[:n_take])
+
+    recommendations.sort(key=lambda x: (-bool(x['is_available']), -x['score']))
+
+    daily_slips = build_daily_stairway_slips(recommendations)
+    if daily_slips:
+        print(
+            f"[ALGO] Daily Stairway slips: {len(daily_slips)} calendar day(s) "
+            f"(merged sports, greedy legs ≤{STAIRWAY_DAILY_MAX}, combined odds capped)."
+        )
 
     # ── Step 4: Console Output ──
     tier_counts = {1: 0, 2: 0, 3: 0}
@@ -276,7 +397,10 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
         tier_counts[r['tier']] = tier_counts.get(r['tier'], 0) + 1
 
     high_conf = [r for r in recommendations if r['score'] >= 0.65]
-    print(f"[ALGO] Candidates: {len(candidates)} | Selected top {len(recommendations)} (top 20%)")
+    print(
+        f"[ALGO] Candidates: {len(candidates)} | Selected {len(recommendations)} "
+        f"(per sport/day: top ceil(20%), football.com listings prioritized)"
+    )
     print(f"[ALGO] Tiers: ⚓ Anchor={tier_counts[1]} | 💎 Value={tier_counts[2]} | 🎯 Specialist={tier_counts[3]}")
     print(f"[ALGO] High-adaptive (≥0.65): {len(high_conf)}")
     if recommendations:
@@ -353,6 +477,14 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
         except Exception as e:
             print(f"[Error] Failed to save JSON recommendations: {e}")
 
+        slips_path = os.path.join(p_root, "Data", "Store", "stairway_daily_slips.json")
+        try:
+            with open(slips_path, "w", encoding="utf-8") as f:
+                json.dump(daily_slips, f, ensure_ascii=False, indent=2)
+            print(f"[OK] Daily slips (JSON) saved to: {slips_path}")
+        except Exception as e:
+            print(f"[Error] Failed to save daily slips: {e}")
+
         # Update predictions table
         save_recommendations_to_predictions_csv(recommendations)
 
@@ -363,7 +495,8 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
         'scored': len(recommendations),
         'high_confidence': len(high_conf),
         'top_score': recommendations[0]['score'] if recommendations else 0,
-        'recommendations': recommendations
+        'recommendations': recommendations,
+        'daily_slips': daily_slips,
     }
 
 

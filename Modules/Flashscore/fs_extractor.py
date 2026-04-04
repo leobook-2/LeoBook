@@ -67,8 +67,12 @@ async def extract_all_matches(page: Page, label: str = "Extractor") -> list:
         const matches = [];
         const debug = {total_elements: 0, headers: 0, headers_with_matches: 0, empty_headers: 0, no_id: 0, no_teams: 0, matched: 0};
         const combinedSel = sel.league_header_wrapper + ', ' + sel.match_rows;
-        let container = document.querySelector(sel.sport_container_soccer);
+        let container = document.querySelector(sel.sport_container || '.sportName');
         let allElements = container ? container.querySelectorAll(combinedSel) : [];
+        if (allElements.length < 50) {
+            container = document.querySelector(sel.sport_container_soccer);
+            allElements = container ? container.querySelectorAll(combinedSel) : [];
+        }
         if (allElements.length < 50) {
             container = document.body;
             allElements = container.querySelectorAll(combinedSel);
@@ -179,8 +183,8 @@ async def extract_all_matches(page: Page, label: str = "Extractor") -> list:
             // Team ID and URL extraction from match link
             let homeTeamId = '', awayTeamId = '', homeTeamUrl = '', awayTeamUrl = '';
             const mLink = linkEl ? linkEl.getAttribute('href') : '';
-            if (mLink && mLink.includes('/match/football/')) {
-                const cleanPath = mLink.replace(/^(.*\/match\/football\/)/, '');
+            if (mLink && /\/match\/(football|basketball)\//.test(mLink)) {
+                const cleanPath = mLink.replace(/^.*\/match\/(football|basketball)\//, '');
                 const parts = cleanPath.split('/').filter(p => p);
                 if (parts.length >= 2) {
                     const hSeg = parts[0]; const aSeg = parts[1];

@@ -6,13 +6,18 @@
 from typing import Optional
 from Core.System.lifecycle import log_state, state
 from Core.System.scheduler import TaskScheduler, TASK_WEEKLY_ENRICHMENT, TASK_DAY_BEFORE_PREDICT, TASK_RL_TRAINING
-from Core.System.data_readiness import check_leagues_ready, check_seasons_ready
+from Core.System.data_readiness import check_leagues_ready
+from Core.System.prologue_extraction import (
+    run_flashscore_prologue_refresh,
+    run_football_com_prologue_phase0,
+)
 from Core.Intelligence.aigo_suite import AIGOSuite
 from Data.Access.db_helpers import init_csvs, log_audit_event
 from Data.Access.sync_manager import SyncManager, run_full_sync
 from Data.Access.league_db import init_db
 from Modules.Flashscore.fs_live_streamer import live_score_streamer
 from Modules.FootballCom.fb_manager import run_odds_harvesting, run_automated_booking
+from Modules.FootballCom.fb_basketball_booker import run_basketball_odds_harvesting
 from Scripts.recommend_bets import get_recommendations
 from Core.Intelligence.prediction_pipeline import run_predictions
 from Modules.Flashscore.fs_league_enricher import main as run_league_enricher
@@ -56,33 +61,6 @@ async def run_startup_sync():
 
 
 # ============================================================
-# AUTO-REMEDIATION
-# ============================================================
-
-async def auto_remediate(target: str, args=None):
-    """Auto-triggers the correct enrichment or training path to fix readiness gaps."""
-    print(f"\n  [AUTO] Triggering auto-remediation for: {target}")
-    
-    # Use limit from CLI if available
-    limit = 100
-    if args and getattr(args, '_limit_count', None):
-        limit = args._limit_count
-        
-    try:
-        if target == "leagues":
-            await run_league_enricher(limit=limit)
-        elif target == "seasons":
-            await run_league_enricher(num_seasons=2)
-        elif target == "rl":
-            from Core.Intelligence.rl.trainer import RLTrainer
-            trainer = RLTrainer()
-            trainer.train_from_fixtures()
-        print(f"  [AUTO] Remediation cycle completed.")
-    except Exception as e:
-        print(f"  [AUTO] League enrichment failed: {e}")
-
-
-# ============================================================
 # PROLOGUE — Data Readiness Gates
 # ============================================================
 
@@ -96,8 +74,31 @@ async def run_prologue_p1(args=None):
  
         ready, stats = check_leagues_ready()
         if not ready:
-            await auto_remediate("leagues", args=args)
-            ready, stats = check_leagues_ready()
+            print(
+                "  [Prologue P1] Gates not satisfied. Run explicit enrichment, e.g.\n"
+                "      python Leo.py --enrich-leagues [--refresh] [--seasons N]\n"
+                "  Auto-remediation is disabled (All-or-Nothing — operator-driven enrichment only)."
+            )
+            opt_in = bool(
+                args is not None and getattr(args, "prologue_p1_enrich", False)
+            )
+            if opt_in:
+                print(
+                    "  [Prologue P1] --prologue-p1-enrich: running one active-window enrichment pass..."
+                )
+                await run_league_enricher(
+                    refresh=True,
+                    active_window_days=14,
+                    priority_fb_mapped_first=True,
+                )
+                ready, stats = check_leagues_ready()
+                if ready:
+                    print("  [Prologue P1] Readiness gates satisfied after enrichment.")
+                else:
+                    print(
+                        "  [Prologue P1] Gates still not satisfied after enrichment. "
+                        "Run a broader pass: python Leo.py --enrich-leagues ..."
+                    )
 
         log_audit_event("PROLOGUE_P1",
                         f"Leagues: {stats['actual_leagues']}/{stats['expected_leagues']}, "
@@ -109,41 +110,68 @@ async def run_prologue_p1(args=None):
 
 
 async def run_prologue_p2(args=None):
-    """Prologue P2: Verify history/quality (Job A) and RL tier (Job B)."""
-    log_state(chapter="Prologue P2", action="Data Readiness: History & Quality")
+    """Prologue P2: Flashscore extraction — active window refresh, fb-mapped leagues first (gated on P1)."""
+    log_state(chapter="Prologue P2", action="Flashscore active-window extraction")
     try:
         print("\n" + "=" * 60)
-        print("  PROLOGUE P2: Data Readiness - History & Quality")
+        print("  PROLOGUE P2: Flashscore — Active Window Extraction")
         print("=" * 60)
- 
-        ready, reports = check_seasons_ready()
+
+        ready, stats = check_leagues_ready()
         if not ready:
-            await auto_remediate("seasons", args=args)
-            ready, reports = check_seasons_ready()
+            print(
+                "  [Prologue P2] BLOCKED until Prologue P1 passes. "
+                "Fix league/team readiness, then re-run Prologue.\n"
+                "  Hint: python Leo.py --enrich-leagues"
+            )
+            log_audit_event(
+                "PROLOGUE_P2",
+                f"Blocked: P1 not ready ({stats.get('actual_leagues', '?')} leagues)",
+                status="blocked",
+            )
+            return
 
-        # Extract relevant stats from reports for logging
-        total_seasons = sum(1 for r in reports if r.get('status') == 'ready')
-        rl_tier = reports[0].get('rl_tier', 'UNKNOWN') if reports else 'UNKNOWN'
-        critical_gaps = sum(r.get('critical_gaps', 0) for r in reports)
-
-        log_audit_event(
-            "PROLOGUE_P2",
-            f"Seasons Ready: {ready}, Count: {total_seasons} | "
-            f"RL tier: {rl_tier} | "
-            f"Gaps: {critical_gaps} critical",
-            status="success" if ready else "partial_failure"
+        await run_flashscore_prologue_refresh(
+            active_window_days=14,
+            priority_fb_mapped_first=True,
         )
+        log_audit_event("PROLOGUE_P2", "Flashscore prologue refresh completed.", status="success")
     except Exception as e:
         print(f"  [Error] Prologue P2 failed: {e}")
         log_audit_event("PROLOGUE_P2", f"Failed: {e}", status="failed")
 
 
-async def run_prologue_p3():
-    """Prologue P3: RL Adapter Check [DISABLED]."""
-    print("\n" + "=" * 60)
-    print("  PROLOGUE P3: RL Adapter Check [DISABLED]")
-    print("=" * 60)
-    print("    Skipping RL readiness check as requested.")
+async def run_prologue_p3(args=None):
+    """Prologue P3: football.com Phase 0 — fixture/calendar sync for mapped leagues (gated on P1)."""
+    log_state(chapter="Prologue P3", action="football.com Phase 0 calendar sync")
+    try:
+        print("\n" + "=" * 60)
+        print("  PROLOGUE P3: football.com — Phase 0 Calendar / Fixture Discovery")
+        print("=" * 60)
+
+        ready, stats = check_leagues_ready()
+        if not ready:
+            print(
+                "  [Prologue P3] BLOCKED until Prologue P1 passes. "
+                "Fix league/team readiness first.\n"
+                "  Hint: python Leo.py --enrich-leagues"
+            )
+            log_audit_event(
+                "PROLOGUE_P3",
+                f"Blocked: P1 not ready ({stats.get('actual_leagues', '?')} leagues)",
+                status="blocked",
+            )
+            return
+
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as p:
+            await run_football_com_prologue_phase0(p)
+
+        log_audit_event("PROLOGUE_P3", "football.com Phase 0 sync completed.", status="success")
+    except Exception as e:
+        print(f"  [Error] Prologue P3 failed: {e}")
+        log_audit_event("PROLOGUE_P3", f"Failed: {e}", status="failed")
 
 
 # ============================================================
@@ -160,7 +188,16 @@ async def run_chapter_1_p1(p):
         print("=" * 60)
 
         await run_odds_harvesting(p)
-        log_audit_event("CH1_P1", "URL resolution and odds harvesting completed.", status="success")
+        try:
+            await run_basketball_odds_harvesting(p)
+        except Exception as bb_e:
+            print(f"  [Ch1 P1] Basketball odds harvesting failed (non-fatal): {bb_e}")
+
+        log_audit_event(
+            "CH1_P1",
+            "Football + basketball odds harvesting completed.",
+            status="success",
+        )
         return True
     except Exception as e:
         print(f"  [Error] Chapter 1 Page 1 failed: {e}")
@@ -305,6 +342,15 @@ async def run_chapter_2_p2(p):
         log_audit_event("CH2_P2",
                         f"Withdrawal check completed. Balance: {state.get('current_balance', 'N/A')}",
                         status="success")
+        try:
+            from Data.Access.user_supabase_sync import push_fb_balance_snapshot
+
+            uid = state.get("user_id") or ""
+            bal = state.get("current_balance")
+            if uid and bal is not None:
+                push_fb_balance_snapshot(uid, float(bal), source="ch2_p2")
+        except Exception:
+            pass
         await run_full_sync(session_name="Ch2 P2 Withdrawal")
     except Exception as e:
         print(f"  [Warning] Chapter 2 Page 2 failed: {e}")
@@ -327,7 +373,7 @@ async def execute_scheduled_tasks(scheduler: TaskScheduler, p=None):
         try:
             if task.task_type == TASK_WEEKLY_ENRICHMENT:
                 print(f"  [Scheduler] Running weekly enrichment (task: {task.task_id})")
-                await run_league_enricher(weekly=True)
+                await run_league_enricher(weekly=True, active_window_days=14)
                 scheduler.complete_task(task.task_id)
 
             elif task.task_type == TASK_DAY_BEFORE_PREDICT:
@@ -338,7 +384,10 @@ async def execute_scheduled_tasks(scheduler: TaskScheduler, p=None):
 
             elif task.task_type == TASK_RL_TRAINING:
                 print(f"  [Scheduler] Running RL training (task: {task.task_id})")
-                await auto_remediate("rl")
+                from Core.Intelligence.rl.trainer import RLTrainer
+
+                trainer = RLTrainer()
+                trainer.train_from_fixtures()
                 scheduler.complete_task(task.task_id)
 
         except Exception as e:
@@ -399,13 +448,13 @@ async def _dispatch_inner(args):
     async with async_playwright() as p:
         if args.prologue:
             if args.page == 1:
-                await run_prologue_p1()
+                await run_prologue_p1(args)
             elif args.page == 2:
                 await run_prologue_p2()
             elif args.page == 3:
                 await run_prologue_p3()
             else:
-                await run_prologue_p1()
+                await run_prologue_p1(args)
                 await run_prologue_p2()
                 await run_prologue_p3()
             return
@@ -448,7 +497,7 @@ async def _dispatch_inner(args):
 
 
 __all__ = [
-    "run_startup_sync", "auto_remediate",
+    "run_startup_sync",
     "run_prologue_p1", "run_prologue_p2", "run_prologue_p3",
     "run_chapter_1_p1", "run_chapter_1_p2", "run_chapter_1_p3",
     "run_chapter_2_p1", "run_chapter_2_p2",

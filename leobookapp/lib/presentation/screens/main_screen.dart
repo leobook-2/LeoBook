@@ -49,10 +49,10 @@ class _MainScreenState extends State<MainScreen> {
                           setState(() => _currentIndex = 2),
                     ),
                     const TierGate(
-                      requirement: TierRequirement.canAutomateBetting,
-                      featureName: 'Rule Engine & Backtesting',
+                      requirement: TierRequirement.canUseRuleEngine,
+                      featureName: 'Rule Engine Studio',
                       featureDescription:
-                          'Build custom rules, run backtests, and automate betting. Pro only.',
+                          'Sign in to create engines, run backtests, and sync rules to the cloud.',
                       child: BacktestDashboard(),
                     ),
                     const TopPredictionsScreen(),

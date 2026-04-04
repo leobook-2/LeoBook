@@ -129,7 +129,7 @@ In v7.1, AIGO's self-healing capabilities expanded from browser interactions to 
   3. **Search Handler**: If local resolution fails, the ID is pushed to the `enrichment_queue` for **automated Flashscore searching**.
 
 ### 7.3 `enrichment_queue` Drain Cycle
-- **Orchestrator**: [Leo.py](Leo.py) triggers `auto_remediate`.
+- **Orchestrator**: [Leo.py](Leo.py) runs explicit flags (`--enrich-leagues`, `--train-rl`, etc.); gates do not auto-trigger remediation.
 - **Worker**: [enrich_leagues.py](Scripts/enrich_leagues.py) pulls `Priority 1 (CRITICAL)` items.
 - **AIGO Action**: Spawns a Playwright page, searches Flashscore for the specific team/league name, extracts the correct URL-based ID, and updates the database — closing the loop without human intervention.
 

@@ -8,8 +8,10 @@ import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/core/constants/responsive_constants.dart';
 import 'package:leobookapp/core/widgets/glass_container.dart';
 import 'package:leobookapp/data/models/rule_config_model.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:leobookapp/data/services/leo_service.dart';
 import 'package:leobookapp/data/services/rl_config_service.dart';
+import 'package:leobookapp/data/services/rule_engines_service.dart';
 import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
 
 class RuleEditorScreen extends StatefulWidget {
@@ -23,6 +25,7 @@ class RuleEditorScreen extends StatefulWidget {
 class _RuleEditorScreenState extends State<RuleEditorScreen> {
   late RuleConfigModel _config;
   final LeoService _service = LeoService();
+  final RuleEnginesService _remoteEngines = RuleEnginesService();
   bool _isSaving = false;
   bool _isNew = false;
 
@@ -76,9 +79,15 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
     _config.description = _descCtrl.text.trim();
 
     try {
-      // Save rule engine to local file
-      await _service.saveEngine(_config);
-      // Sync ML filter preferences to Supabase
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid != null) {
+        await _remoteEngines.saveEngine(
+          _config,
+          isBuiltinDefault: _config.id == 'default',
+        );
+      } else {
+        await _service.saveEngine(_config);
+      }
       if (_rlConfig != null) await _rlService.save(_rlConfig!);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,4 +1,5 @@
 # fb_basketball_booker.py: Basketball odds harvesting + booking orchestrator.
+# Site/sport adapter: Core.Scrapers.FootballComBasketballScraper (per-match hooks).
 # Part of LeoBook Modules — FootballCom
 # Sport: basketball
 #
@@ -437,13 +438,20 @@ async def run_basketball_booking(playwright: Playwright) -> None:
             log_state(chapter="Chapter 2B", action="Basketball booking")
 
             from Core.System.guardrails import run_all_pre_bet_checks, StaircaseTracker
+            from Core.System.lifecycle import state as _leo_state
+
             ok, reason = run_all_pre_bet_checks(balance=current_balance)
             if not ok:
                 print(f"  [BB GUARDRAIL] Blocked: {reason}")
                 log_audit_event("BB_GUARDRAIL_BLOCK", reason, status="blocked")
                 return
 
-            stake = StaircaseTracker().get_current_step_stake()
+            uid = (_leo_state.get("user_id") or "").strip()
+            stake = (
+                StaircaseTracker(uid).get_current_step_stake()
+                if uid
+                else max(1, int(current_balance * 0.01))
+            )
             print(f"  [BB Booking] Stairway stake: {stake}")
 
             # Share-code accumulator: navigate to each booking URL + place

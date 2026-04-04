@@ -188,7 +188,10 @@ def calculate_kelly_stake(balance: float, odds: float, probability: float = 0.60
     min_stake = int(max(1, balance * 0.01))
     try:
         from Core.System.guardrails import StaircaseTracker
-        max_stake = StaircaseTracker().get_max_stake()
+        from Core.System.lifecycle import state as _leo_state
+
+        uid = (_leo_state.get("user_id") or "").strip()
+        max_stake = StaircaseTracker(uid).get_max_stake() if uid else int(balance * 0.50)
     except Exception:
         max_stake = int(balance * 0.50)  # Fallback if stairway unavailable
     

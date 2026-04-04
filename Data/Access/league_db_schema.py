@@ -402,6 +402,9 @@ _ALTER_MIGRATIONS = [
     ("accuracy_reports", "market_breakdown",   "JSON"),
     ("accuracy_reports", "roi_curve",          "JSON"),
     ("accuracy_reports", "streak_data",        "JSON"),
+    # v9.7.0 — stairway weekly cycle tracking (Free tier cap in app + mirror to Supabase)
+    ("stairway_state", "week_bucket", "TEXT"),
+    ("stairway_state", "week_cycles_completed", "INTEGER DEFAULT 0"),
 ]
 
 # ── CSV → SQLite import map REMOVED (v7.0) ───────────────────────────────────

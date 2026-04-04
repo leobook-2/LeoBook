@@ -10,12 +10,14 @@ V7 Prediction Pipeline — Zero browser, pure computation.
 All data sourced from the schedules table (populated by weekly enrichment).
 """
 
+import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, Optional
 
-from Data.Access.league_db import init_db, computed_standings
+from Data.Access.league_db import init_db, computed_standings, get_fb_url_for_league
 from Data.Access.db_helpers import save_prediction
 from Core.Intelligence.rule_engine import RuleEngine
 from Core.Intelligence.rl.inference import RLPredictor
@@ -24,6 +26,19 @@ from Core.Utils.constants import now_ng
 
 logger = logging.getLogger(__name__)
 NIGERIA_TZ = ZoneInfo("Africa/Lagos")
+
+_PREDICTOR_HINT_PATH = Path(__file__).resolve().parents[2] / "Data" / "Store" / "recommender_predictor_hint.json"
+
+
+def _load_predictor_hint() -> Optional[dict]:
+    """Optional recommender→predictor hook: league EMA from Ch1 P3 (see Scripts/recommend_bets.py)."""
+    try:
+        if _PREDICTOR_HINT_PATH.is_file():
+            with open(_PREDICTOR_HINT_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
 
 
 def _schedule_to_match_dict(row: Dict) -> Dict:
@@ -289,10 +304,22 @@ async def run_predictions(conn=None, fixtures: List[Dict] = None, scheduler=None
         print("    [Predictions] No eligible fixtures (all already started or predicted).")
         return []
 
+    def _fb_priority(fx: Dict) -> tuple:
+        lid = fx.get("league_id") or ""
+        mapped = bool(lid and get_fb_url_for_league(conn, lid))
+        return (0 if mapped else 1, fx.get("date", ""), fx.get("time", ""))
+
+    eligible.sort(key=_fb_priority)
+    print(
+        "    [Predictions] Fixture order: football.com–mapped leagues first, "
+        f"then others ({len(eligible)} fixtures)."
+    )
+
     print(f"    [Predictions] Processing {len(eligible)} fixtures (pure DB computation)...")
 
     predictions_made = []
     skipped = 0
+    predictor_hint = _load_predictor_hint()
 
     for fixture in eligible:
         fixture_id = fixture.get("fixture_id", "unknown")
@@ -424,6 +451,16 @@ async def run_predictions(conn=None, fixtures: List[Dict] = None, scheduler=None
 
             # Update confidence label based on merged confidence
             conf = merged["confidence"]
+            if predictor_hint:
+                league_name = fixture.get("country_league") or intelligence_context["h2h_data"].get(
+                    "country_league", ""
+                )
+                ema = (predictor_hint.get("league_ema") or {}).get(league_name)
+                if ema is not None and isinstance(ema, (int, float)):
+                    scale = 1.0 + 0.10 * (float(ema) - 0.5)
+                    mr = float(prediction["market_reliability"])
+                    prediction["market_reliability"] = round(min(99.0, max(1.0, mr * scale)), 1)
+                    conf = prediction["market_reliability"] / 100.0
             if conf > 0.75: prediction["confidence"] = "Very High"
             elif conf > 0.60: prediction["confidence"] = "High"
             elif conf > 0.45: prediction["confidence"] = "Medium"

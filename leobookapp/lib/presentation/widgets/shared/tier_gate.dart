@@ -16,21 +16,31 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/data/models/user_model.dart';
 import 'package:leobookapp/logic/cubit/user_cubit.dart';
+import 'package:leobookapp/presentation/screens/login_screen.dart';
 import 'package:leobookapp/presentation/screens/subscription_screen.dart';
 
 /// Describes the access requirement for a gated feature.
 enum TierRequirement {
-  /// Requires UserModel.canAutomateBetting == true (Pro tier).
+  /// Requires UserModel.canAutomateBetting == true (Super).
   canAutomateBetting,
 
-  /// Requires UserModel.canAccessChapter2 == true (Pro tier).
+  /// Full Chapter 2 automation (Super).
   canAccessChapter2,
 
-  /// Requires any paid tier (lite or pro — not guest).
+  /// Signed-in user (Rule Engine, stairway view, etc.).
   authenticated,
 
-  /// Requires Pro tier (isPro == true).
+  /// Super / Pro feature flag.
   pro,
+
+  /// Rule Engine Studio (registered only).
+  canUseRuleEngine,
+
+  /// RL training queue (Super only).
+  canTrainRl,
+
+  /// Project Stairway dashboard (registered).
+  canViewStairway,
 }
 
 /// Wraps [child] and enforces a [TierRequirement].
@@ -65,6 +75,12 @@ class TierGate extends StatelessWidget {
         return user.isAuthenticated;
       case TierRequirement.pro:
         return user.isPro;
+      case TierRequirement.canUseRuleEngine:
+        return user.canUseRuleEngine;
+      case TierRequirement.canTrainRl:
+        return user.canTrainRl;
+      case TierRequirement.canViewStairway:
+        return user.canViewStairway;
     }
   }
 
@@ -76,6 +92,7 @@ class TierGate extends StatelessWidget {
           return child;
         }
         return _LockedView(
+          requirement: requirement,
           featureName: featureName ?? _defaultFeatureName(requirement),
           featureDescription:
               featureDescription ?? _defaultDescription(requirement),
@@ -89,11 +106,17 @@ class TierGate extends StatelessWidget {
       case TierRequirement.canAutomateBetting:
         return 'Betting Automation';
       case TierRequirement.canAccessChapter2:
-        return 'Chapter 2';
+        return 'Chapter 2 Automation';
       case TierRequirement.authenticated:
         return 'This Feature';
       case TierRequirement.pro:
-        return 'Pro Feature';
+        return 'Super LeoBook';
+      case TierRequirement.canUseRuleEngine:
+        return 'Rule Engine Studio';
+      case TierRequirement.canTrainRl:
+        return 'RL Training';
+      case TierRequirement.canViewStairway:
+        return 'Project Stairway';
     }
   }
 
@@ -102,11 +125,17 @@ class TierGate extends StatelessWidget {
       case TierRequirement.canAutomateBetting:
         return 'Automate bet placement and withdrawal via Chapter 2.';
       case TierRequirement.canAccessChapter2:
-        return 'Access advanced booking, placement, and automation tools.';
+        return 'Full auto-staking and funds management require Super LeoBook.';
       case TierRequirement.authenticated:
         return 'Sign in to access this feature.';
       case TierRequirement.pro:
-        return 'Upgrade to Pro to unlock this feature.';
+        return 'Upgrade to Super LeoBook to unlock this feature.';
+      case TierRequirement.canUseRuleEngine:
+        return 'Sign in to create and manage rule engines.';
+      case TierRequirement.canTrainRl:
+        return 'Super LeoBook includes daily RL training sessions tied to your engines.';
+      case TierRequirement.canViewStairway:
+        return 'Sign in to track your stairway step, cycles, and weekly progress.';
     }
   }
 }
@@ -115,12 +144,25 @@ class TierGate extends StatelessWidget {
 
 class _LockedView extends StatelessWidget {
   const _LockedView({
+    required this.requirement,
     required this.featureName,
     required this.featureDescription,
   });
 
+  final TierRequirement requirement;
   final String featureName;
   final String featureDescription;
+
+  String get _ctaLabel {
+    switch (requirement) {
+      case TierRequirement.authenticated:
+      case TierRequirement.canUseRuleEngine:
+      case TierRequirement.canViewStairway:
+        return 'Sign in';
+      default:
+        return 'Upgrade to Super';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +214,7 @@ class _LockedView extends StatelessWidget {
               ),
               const SizedBox(height: 28),
 
-              // Pro badge
+              // Tier badge
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -180,7 +222,11 @@ class _LockedView extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'Pro Feature',
+                  requirement == TierRequirement.authenticated ||
+                          requirement == TierRequirement.canUseRuleEngine ||
+                          requirement == TierRequirement.canViewStairway
+                      ? 'Sign in required'
+                      : 'Super LeoBook',
                   style: GoogleFonts.dmSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -193,11 +239,16 @@ class _LockedView extends StatelessWidget {
               // Upgrade CTA
               GestureDetector(
                 onTap: () {
+                  final goLogin = requirement == TierRequirement.authenticated ||
+                      requirement == TierRequirement.canUseRuleEngine ||
+                      requirement == TierRequirement.canViewStairway;
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => BlocProvider.value(
                         value: context.read<UserCubit>(),
-                        child: const SubscriptionScreen(),
+                        child: goLogin
+                            ? const LoginScreen()
+                            : const SubscriptionScreen(),
                       ),
                     ),
                   );
@@ -212,7 +263,7 @@ class _LockedView extends StatelessWidget {
                   ),
                   alignment: Alignment.center,
                   child: Text(
-                    'Upgrade to Pro',
+                    _ctaLabel,
                     style: GoogleFonts.dmSans(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,

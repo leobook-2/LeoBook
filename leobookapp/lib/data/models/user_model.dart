@@ -50,15 +50,36 @@ class UserModel {
   });
 
   // ─── Access Control ──────────────────────────────────────────────
+  // Guest = unregistered. Free = signed in, not Super. Super = paid / trial flag.
 
-  bool get canCreateCustomRules =>
-      tier == UserTier.lite || tier == UserTier.pro;
-  bool get canRunBacktests => tier == UserTier.lite || tier == UserTier.pro;
-  bool get canAutomateBetting => tier == UserTier.pro;
-  bool get canAccessChapter2 => tier == UserTier.pro;
-  bool get isPro => tier == UserTier.pro || isSuperLeoBook;
   bool get isGuest => tier == UserTier.unregistered && id == 'guest';
   bool get isAuthenticated => id != 'guest';
+
+  /// Rule Engine Studio: CRUD engines (guest: no).
+  bool get canUseRuleEngine => isAuthenticated;
+
+  /// Super LeoBook: queue RL training jobs, unlimited engines.
+  bool get canTrainRl => isSuperLeoBook;
+
+  /// Max custom engines (excluding built-in `default`). Null means unlimited.
+  int? get maxCustomRuleEngines => isSuperLeoBook ? null : 5;
+
+  bool get canCreateCustomRules => canUseRuleEngine;
+  bool get canRunBacktests => canUseRuleEngine;
+
+  /// Full Chapter 2 automation (booking, withdrawal orchestration).
+  bool get canAutomateBetting => isSuperLeoBook;
+
+  /// Chapter 2 UI (manual tools / visibility) for registered users.
+  bool get canAccessChapter2Ui => isAuthenticated;
+
+  /// Legacy: full Chapter 2 automation (maps to Super).
+  bool get canAccessChapter2 => canAutomateBetting;
+
+  /// View Project Stairway dashboard (registered).
+  bool get canViewStairway => isAuthenticated;
+
+  bool get isPro => tier == UserTier.pro || isSuperLeoBook;
 
   // ─── Factories ───────────────────────────────────────────────────
 

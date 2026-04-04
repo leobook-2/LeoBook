@@ -1,439 +1,66 @@
-// phone_otp_screen.dart: Phone number + OTP verification screen.
+// phone_otp_screen.dart: SMS/WhatsApp OTP entrypoint removed (policy).
 // Part of LeoBook App — Screens
 //
-// Two-step flow: phone input → OTP pin entry.
-// Desktop: centered modal card. Mobile: full-page scaffold.
+// Use email OTP sign-up or phone + password sign-in instead.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
-import 'package:leobookapp/logic/cubit/user_cubit.dart';
-import 'package:leobookapp/presentation/screens/main_screen.dart';
-import 'package:leobookapp/presentation/screens/profile_setup_screen.dart';
+import 'package:leobookapp/data/repositories/auth_repository.dart';
+import 'package:leobookapp/presentation/screens/login_screen.dart';
 
-class PhoneOtpScreen extends StatefulWidget {
+class PhoneOtpScreen extends StatelessWidget {
   const PhoneOtpScreen({super.key});
 
   @override
-  State<PhoneOtpScreen> createState() => _PhoneOtpScreenState();
-}
-
-class _PhoneOtpScreenState extends State<PhoneOtpScreen> {
-  final _phoneController = TextEditingController();
-  final _otpController = TextEditingController();
-  bool _otpSent = false;
-  String _phone = '';
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    _otpController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _sendOtp() async {
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty) return;
-    // Ensure + prefix
-    final formatted = phone.startsWith('+') ? phone : '+234$phone';
-    setState(() {
-      _phone = formatted;
-    });
-    await context.read<UserCubit>().sendPhoneOtp(formatted);
-
-    if (!mounted || context.read<UserCubit>().state is UserError) {
-      return;
-    }
-
-    setState(() => _otpSent = true);
-  }
-
-  void _verifyOtp() {
-    final token = _otpController.text.trim();
-    if (token.length < 6) return;
-    context.read<UserCubit>().verifyPhoneOtp(_phone, token);
-  }
-
-  void _navigateToMain() {
-    Navigator.of(context).pushAndRemoveUntil(
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const MainScreen(),
-        transitionsBuilder: (_, anim, __, child) =>
-            FadeTransition(opacity: anim, child: child),
-        transitionDuration: const Duration(milliseconds: 400),
-      ),
-      (_) => false,
-    );
-  }
-
-  void _goBack() {
-    if (_otpSent) {
-      setState(() => _otpSent = false);
-    } else {
-      Navigator.of(context).pop();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return BlocListener<UserCubit, UserState>(
-      listener: (context, state) {
-        if (state is UserAuthenticated) {
-          _navigateToMain();
-        } else if (state is UserProfileIncomplete) {
-          Navigator.of(context).pushAndRemoveUntil(
-            PageRouteBuilder(
-              pageBuilder: (_, __, ___) => const ProfileSetupScreen(),
-              transitionsBuilder: (_, anim, __, child) =>
-                  FadeTransition(opacity: anim, child: child),
-              transitionDuration: const Duration(milliseconds: 400),
-            ),
-            (_) => false,
-          );
-        } else if (state is UserError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: AppColors.liveRed,
-            ),
-          );
-        }
-      },
-      child: Scaffold(
-        backgroundColor: AppColors.neutral900,
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final isDesktop = constraints.maxWidth > 1024;
-              final content = _otpSent ? _buildOtpView() : _buildPhoneView();
-
-              if (isDesktop) {
-                // Desktop: centered modal card (same style as login modal)
-                return Center(
-                  child: Container(
-                    width: 420,
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 40, horizontal: 32),
-                    decoration: BoxDecoration(
-                      color: AppColors.neutral800,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.08),
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Back button row
-                        GestureDetector(
-                          onTap: _goBack,
-                          child: Row(
-                            children: [
-                              const Icon(Icons.arrow_back,
-                                  color: Colors.white, size: 20),
-                              const SizedBox(width: 10),
-                              Text(
-                                _otpSent ? 'Verify OTP' : 'Phone Number',
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        content,
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              // Mobile: full page with AppBar
-              return Column(
-                children: [
-                  // Custom AppBar row
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon:
-                              const Icon(Icons.arrow_back, color: Colors.white),
-                          onPressed: _goBack,
-                        ),
-                        Text(
-                          _otpSent ? 'Verify OTP' : 'Phone Number',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: content,
-                    ),
-                  ),
-                ],
-              );
-            },
+    return Scaffold(
+      backgroundColor: AppColors.neutral900,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Phone SMS sign-in',
+                style: GoogleFonts.dmSans(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                AuthRepository.kSmsOtpDisabledMessage,
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  color: AppColors.textTertiary,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 32),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (_) => false,
+                  );
+                },
+                child: const Text('Back to sign in'),
+              ),
+            ],
           ),
         ),
       ),
-    );
-  }
-
-  // ── Phone Number Input ──────────────────────────────────────────
-
-  Widget _buildPhoneView() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const SizedBox(height: 32),
-        Text(
-          'Enter your phone number',
-          style: GoogleFonts.dmSans(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'We\'ll send you a verification code via SMS.',
-          style: GoogleFonts.dmSans(
-            fontSize: 13,
-            color: AppColors.textTertiary,
-          ),
-        ),
-        const SizedBox(height: 32),
-
-        // Phone input
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.neutral800,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          ),
-          child: Row(
-            children: [
-              // Country code chip
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    right: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.08),
-                    ),
-                  ),
-                ),
-                child: Text(
-                  '+234',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  style: GoogleFonts.dmSans(
-                    fontSize: 15,
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '8012345678',
-                    hintStyle: GoogleFonts.dmSans(
-                      color: AppColors.textDisabled,
-                      fontSize: 15,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 24),
-
-        // Send OTP button
-        BlocBuilder<UserCubit, UserState>(
-          builder: (context, state) {
-            final isLoading = state is UserLoading;
-            return GestureDetector(
-              onTap: isLoading ? null : _sendOtp,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                child: Center(
-                  child: isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          'Send Code',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  // ── OTP Input ───────────────────────────────────────────────────
-
-  Widget _buildOtpView() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const SizedBox(height: 32),
-        Text(
-          'Enter verification code',
-          style: GoogleFonts.dmSans(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Code sent to $_phone',
-          style: GoogleFonts.dmSans(
-            fontSize: 13,
-            color: AppColors.textTertiary,
-          ),
-        ),
-        const SizedBox(height: 32),
-
-        // OTP input
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.neutral800,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          ),
-          child: TextField(
-            controller: _otpController,
-            keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(6),
-            ],
-            textAlign: TextAlign.center,
-            style: GoogleFonts.dmSans(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              letterSpacing: 12,
-            ),
-            decoration: InputDecoration(
-              hintText: '000000',
-              hintStyle: GoogleFonts.dmSans(
-                color: AppColors.textDisabled,
-                fontSize: 24,
-                letterSpacing: 12,
-              ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 18,
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 24),
-
-        // Verify button
-        BlocBuilder<UserCubit, UserState>(
-          builder: (context, state) {
-            final isLoading = state is UserLoading;
-            return GestureDetector(
-              onTap: isLoading ? null : _verifyOtp,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                child: Center(
-                  child: isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          'Verify',
-                          style: GoogleFonts.dmSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                ),
-              ),
-            );
-          },
-        ),
-
-        const SizedBox(height: 16),
-
-        // Resend
-        Center(
-          child: GestureDetector(
-            onTap: _sendOtp,
-            child: Text(
-              'Resend Code',
-              style: GoogleFonts.dmSans(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: AppColors.primary,
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

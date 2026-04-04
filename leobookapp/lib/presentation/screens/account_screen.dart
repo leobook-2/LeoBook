@@ -18,6 +18,7 @@ import 'package:leobookapp/presentation/screens/super_leobook_screen.dart';
 import 'package:leobookapp/presentation/screens/subscription_screen.dart';
 import 'package:leobookapp/presentation/screens/stairway_screen.dart';
 import 'package:leobookapp/presentation/screens/accuracy_dashboard_screen.dart';
+import 'package:leobookapp/data/services/user_account_snapshots_service.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -66,6 +67,10 @@ class AccountScreen extends StatelessWidget {
                       const SizedBox(height: 8),
                       // ── Profile Card ───────────────────────────
                       _buildProfileCard(context),
+                      const SizedBox(height: 16),
+                      _FootballComBalanceCard(
+                        user: context.watch<UserCubit>().state.user,
+                      ),
                       const SizedBox(height: 16),
 
                       // ── Super LeoBook Upsell ──────────────────
@@ -883,6 +888,130 @@ class AccountScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Football.com balance (user_fb_balance) ────────────────────────────────
+
+class _FootballComBalanceCard extends StatefulWidget {
+  final UserModel user;
+
+  const _FootballComBalanceCard({required this.user});
+
+  @override
+  State<_FootballComBalanceCard> createState() => _FootballComBalanceCardState();
+}
+
+class _FootballComBalanceCardState extends State<_FootballComBalanceCard> {
+  final UserAccountSnapshotsService _svc = UserAccountSnapshotsService();
+  UserFbBalanceSnapshot? _bal;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FootballComBalanceCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.user.id != widget.user.id) _load();
+  }
+
+  Future<void> _load() async {
+    if (!widget.user.isAuthenticated) {
+      setState(() => _loading = false);
+      return;
+    }
+    setState(() => _loading = true);
+    final b = await _svc.fetchFbBalance();
+    if (mounted) setState(() {
+      _bal = b;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.user.isAuthenticated) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.neutral800,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: _loading
+          ? const SizedBox(
+              height: 24,
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.account_balance_wallet_outlined,
+                        size: 18, color: AppColors.primary.withValues(alpha: 0.9)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Football.com balance',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh, size: 20),
+                      color: AppColors.textTertiary,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _bal == null
+                      ? '—'
+                      : '₦${_bal!.balance.toStringAsFixed(2)}',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+                if (_bal?.capturedAt != null)
+                  Text(
+                    'Last sync: ${_bal!.capturedAt}'
+                    '${_bal!.source != null ? ' · ${_bal!.source}' : ''}',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      color: AppColors.textTertiary,
+                    ),
+                  )
+                else
+                  Text(
+                    'Synced when Leo runs Chapter 2 Page 2 with your user id.',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }

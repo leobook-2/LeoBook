@@ -283,6 +283,68 @@ def process_review_task_offline(match: Dict) -> Optional[Dict]:
     return None
 
 
+def _norm_pred_date_key(d: Optional[str]) -> str:
+    if not d:
+        return ""
+    s = str(d).strip()
+    if len(s) >= 10 and s[4:5] == "-" and s[7:8] == "-":
+        return s[:10]
+    if "." in s and len(s) >= 10:
+        try:
+            head = s[:10]
+            parts = head.split(".")
+            if len(parts) == 3:
+                return f"{parts[2]}-{parts[1]}-{parts[0]}"
+        except Exception:
+            pass
+    return s
+
+
+def print_bet_status_summary(
+    fixture_id: Optional[str] = None,
+    dates: Optional[List[str]] = None,
+    limit: int = 100,
+) -> None:
+    """Narrow bet-status report from SQLite (no browser). Use ``--fixture`` and/or ``--date``."""
+    conn = _get_conn()
+    if fixture_id:
+        rows = query_all(
+            conn,
+            "predictions",
+            "fixture_id = ?",
+            (fixture_id,),
+            order_by="date, match_time",
+        )
+        scope = f"fixture_id={fixture_id}"
+    else:
+        rows = query_all(conn, "predictions", order_by="date DESC, match_time DESC")
+        scope = "recent predictions"
+
+    if dates:
+        want = {_norm_pred_date_key(d) for d in dates if d}
+        rows = [r for r in rows if _norm_pred_date_key(r.get("date")) in want]
+        scope = f"date filter {dates}"
+
+    if limit and len(rows) > limit:
+        rows = rows[:limit]
+
+    print(f"\n  --- Bet status ({scope}) — {len(rows)} row(s) ---")
+    if not rows:
+        print("  (no rows)")
+        return
+
+    for r in rows:
+        fid = r.get("fixture_id", "")
+        ht = r.get("home_team", "")
+        at = r.get("away_team", "")
+        st = r.get("status", "")
+        oc = r.get("outcome_correct", "")
+        pred = (r.get("prediction") or "")[:72]
+        print(
+            f"  • {fid} | {r.get('date')} {r.get('match_time')} | {ht} vs {at}\n"
+            f"    status={st!r} outcome_correct={oc!r} | {pred}"
+        )
+
 
 # ─── Re-exports from outcome_reviewer_browser (backward compat) ───
 from Data.Access.outcome_reviewer_browser import (  # noqa

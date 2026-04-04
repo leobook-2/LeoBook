@@ -147,3 +147,24 @@ REVOKE TRUNCATE ON ALL TABLES IN SCHEMA public FROM leobook_sync;
 -- Once SUPABASE_SYNC_KEY is set, supabase_client.py will prefer it
 -- over SUPABASE_SERVICE_KEY. Remove SUPABASE_SERVICE_KEY from .env
 -- after confirming sync works correctly.
+
+-- STEP 7 — User feature tables (provision with Data/Supabase/user_features_schema.sql first)
+-- ---------------------------------------------------------------------------
+-- Daemon upserts: stairway mirror, Football.com balance, optional rule_engine copies.
+
+CREATE POLICY "sync read"   ON user_rule_engines FOR SELECT TO leobook_sync USING (true);
+CREATE POLICY "sync write"  ON user_rule_engines FOR INSERT TO leobook_sync WITH CHECK (true);
+CREATE POLICY "sync update" ON user_rule_engines FOR UPDATE TO leobook_sync USING (true) WITH CHECK (true);
+
+CREATE POLICY "sync read"   ON user_stairway_state FOR SELECT TO leobook_sync USING (true);
+CREATE POLICY "sync write"  ON user_stairway_state FOR INSERT TO leobook_sync WITH CHECK (true);
+CREATE POLICY "sync update" ON user_stairway_state FOR UPDATE TO leobook_sync USING (true) WITH CHECK (true);
+
+CREATE POLICY "sync read"   ON user_fb_balance FOR SELECT TO leobook_sync USING (true);
+CREATE POLICY "sync write"  ON user_fb_balance FOR INSERT TO leobook_sync WITH CHECK (true);
+CREATE POLICY "sync update" ON user_fb_balance FOR UPDATE TO leobook_sync USING (true) WITH CHECK (true);
+
+CREATE POLICY "sync read"   ON rl_training_jobs FOR SELECT TO leobook_sync USING (true);
+CREATE POLICY "sync write"  ON rl_training_jobs FOR INSERT TO leobook_sync WITH CHECK (true);
+CREATE POLICY "sync update" ON rl_training_jobs FOR UPDATE TO leobook_sync USING (true) WITH CHECK (true);
+-- service_role: add explicit policies via Data/Supabase/user_features_schema.sql (or rely on bypass)

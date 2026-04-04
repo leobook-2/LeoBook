@@ -163,6 +163,50 @@ SUPABASE_SCHEMA = {
             last_updated TIMESTAMPTZ DEFAULT now(),
             PRIMARY KEY (fixture_id, market_id, exact_outcome, line)
         );""",
+    'user_rule_engines': """
+        CREATE TABLE IF NOT EXISTS public.user_rule_engines (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT '',
+            description TEXT DEFAULT '',
+            config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            is_default BOOLEAN NOT NULL DEFAULT false,
+            is_builtin_default BOOLEAN NOT NULL DEFAULT false,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );""",
+    'user_stairway_state': """
+        CREATE TABLE IF NOT EXISTS public.user_stairway_state (
+            user_id TEXT PRIMARY KEY,
+            current_step INTEGER NOT NULL DEFAULT 1,
+            last_updated TIMESTAMPTZ,
+            last_result TEXT,
+            cycle_count INTEGER NOT NULL DEFAULT 0,
+            week_bucket TEXT,
+            week_cycles_completed INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );""",
+    'user_fb_balance': """
+        CREATE TABLE IF NOT EXISTS public.user_fb_balance (
+            user_id TEXT PRIMARY KEY,
+            balance REAL NOT NULL DEFAULT 0,
+            currency TEXT NOT NULL DEFAULT 'NGN',
+            source TEXT,
+            captured_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );""",
+    'rl_training_jobs': """
+        CREATE TABLE IF NOT EXISTS public.rl_training_jobs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id TEXT NOT NULL,
+            rule_engine_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued',
+            train_season TEXT,
+            phase INTEGER DEFAULT 1,
+            requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            started_at TIMESTAMPTZ,
+            finished_at TIMESTAMPTZ,
+            error TEXT
+        );""",
 }
 
 # ── Derived: allowed columns per remote table (parsed from SUPABASE_SCHEMA DDL) ──

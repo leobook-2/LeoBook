@@ -7,9 +7,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/logic/cubit/user_cubit.dart';
-import 'package:leobookapp/presentation/screens/email_auth_screen.dart';
+import 'package:leobookapp/presentation/screens/email_otp_signup_screen.dart';
 import 'package:leobookapp/presentation/screens/main_screen.dart';
-import 'package:leobookapp/presentation/screens/otp_verification_screen.dart';
 import 'package:leobookapp/presentation/screens/password_entry_screen.dart';
 import 'package:leobookapp/presentation/screens/profile_setup_screen.dart';
 
@@ -201,23 +200,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 }
 
                 if (isPhone) {
-                  await context.read<UserCubit>().sendPhoneOtp(formattedId);
-                  if (!context.mounted ||
-                      context.read<UserCubit>().state is UserError) {
-                    return;
-                  }
-
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => OtpVerificationScreen(phone: formattedId),
+                      builder: (_) => const EmailOtpSignUpScreen(
+                        title: 'Create your account',
+                      ),
                     ),
                   );
                 } else {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => EmailAuthScreen(
+                      builder: (_) => EmailOtpSignUpScreen(
                         initialEmail: formattedId,
-                        startInSignUpMode: true,
+                        title: 'Create your account',
                       ),
                     ),
                   );
@@ -242,12 +237,6 @@ class _LoginScreenState extends State<LoginScreen> {
         } else if (state is UserProfileIncomplete) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
-          );
-        } else if (state is UserNeedsVerification) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => OtpVerificationScreen(phone: state.phone),
-            ),
           );
         } else if (state is UserBiometricPrompt) {
           _showBiometricPrompt(context);
@@ -367,11 +356,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 12),
                   _AuthButton(
-                    label: 'Continue with Phone',
+                    label: 'Sign in with Phone',
                     icon: Icons.phone_outlined,
                     isLoading: false,
                     onTap: () =>
-                        _handleIdentifierCheck(context, 'Continue with Phone'),
+                        _handleIdentifierCheck(context, 'Sign in with Phone'),
                   ),
                   const SizedBox(height: 12),
                   _AuthButton(
@@ -500,11 +489,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
                 _AuthButton(
-                  label: 'Continue with Phone',
+                  label: 'Sign in with Phone',
                   icon: Icons.phone_outlined,
                   isLoading: false,
                   onTap: () =>
-                      _handleIdentifierCheck(context, 'Continue with Phone'),
+                      _handleIdentifierCheck(context, 'Sign in with Phone'),
                 ),
                 const SizedBox(height: 12),
                 _AuthButton(

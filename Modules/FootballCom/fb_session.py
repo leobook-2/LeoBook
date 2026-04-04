@@ -65,15 +65,21 @@ async def launch_browser_with_retry(playwright: Playwright, user_data_dir: Path,
         print(f"  [Launch] Attempt {attempt + 1}/{max_retries} with {timeout}ms timeout...")
 
         try:
-            context = await playwright.chromium.launch_persistent_context(
+            _proxy = (os.getenv("LEOBOOK_FB_PROXY") or "").strip()
+            _ua = (os.getenv("LEOBOOK_FB_USER_AGENT") or "").strip() or FB_MOBILE_USER_AGENT
+            _ctx_kwargs = dict(
                 user_data_dir=str(user_data_dir),
                 headless=_is_headless_env,
                 args=_launch_args,
                 ignore_default_args=["--enable-automation"],
                 viewport=FB_MOBILE_VIEWPORT,
-                user_agent=FB_MOBILE_USER_AGENT,
-                timeout=timeout
+                user_agent=_ua,
+                timeout=timeout,
             )
+            if _proxy:
+                _ctx_kwargs["proxy"] = {"server": _proxy}
+                logger.info("[Browser] LEOBOOK_FB_PROXY is set (operator responsibility).")
+            context = await playwright.chromium.launch_persistent_context(**_ctx_kwargs)
 
             print(f"  [Launch] Browser launched successfully on attempt {attempt + 1}!")
             return context

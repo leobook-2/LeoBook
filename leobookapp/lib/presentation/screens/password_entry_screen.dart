@@ -7,7 +7,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
 import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import 'package:leobookapp/presentation/screens/main_screen.dart';
-import 'package:leobookapp/presentation/screens/otp_verification_screen.dart';
 import 'package:leobookapp/presentation/screens/profile_setup_screen.dart';
 
 class PasswordEntryScreen extends StatefulWidget {
@@ -48,14 +47,14 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
       return;
     }
 
-    await context.read<UserCubit>().sendPhoneOtp(widget.identifier);
-    if (!mounted || context.read<UserCubit>().state is UserError) {
-      return;
-    }
-
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => OtpVerificationScreen(phone: widget.identifier),
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Password reset via SMS is disabled. Use Sign in with Email (forgot password from email) '
+          'or Google, or create an account with email verification.',
+        ),
+        backgroundColor: AppColors.neutral700,
       ),
     );
   }
@@ -72,12 +71,6 @@ class _PasswordEntryScreenState extends State<PasswordEntryScreen> {
         } else if (state is UserProfileIncomplete) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const ProfileSetupScreen()),
-          );
-        } else if (state is UserNeedsVerification) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => OtpVerificationScreen(phone: state.phone),
-            ),
           );
         } else if (state is UserError) {
           ScaffoldMessenger.of(context).showSnackBar(

@@ -11,6 +11,12 @@ Navigator Module
 Handles login, session management, balance extraction, and schedule navigation
 for Football.com. All operations are scoped to a user_id — credentials are
 fetched from the user_credentials table, never from module-level .env variables.
+
+Session persistence uses Playwright persistent contexts under Data/Auth (see fb_session).
+End-user IP/device mirroring is not implemented here: routing outbound traffic through
+the user's residential IP would require a separate proxy/VPN integration and explicit
+product/legal approval. Optional future hook: override mobile user_agent/viewport via
+environment or per-user profile once a safe policy exists.
 """
 
 import asyncio

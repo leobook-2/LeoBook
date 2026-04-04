@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from Data.Access.league_db import (
     init_db, get_unprocessed_leagues, get_stale_leagues,
-    get_all_leagues, get_active_leagues,
+    get_all_leagues, get_active_leagues, get_fb_url_for_league,
 )
 from Data.Access.gap_scanner import GapScanner
 from Scripts.db_purge import run_purge, purge_by_contract
@@ -40,6 +40,20 @@ TEAM_CRESTS_DIR  = os.path.join(CRESTS_DIR, "teams")
 MAX_CONCURRENCY = 5
 
 
+def _sort_leagues_fb_mapped_first(conn, leagues: list) -> list:
+    """Stable sort: leagues with a football.com mapping (fb_url) first, then by row id."""
+    scored = []
+    for lg in leagues:
+        lid = lg.get("league_id")
+        has_fb = bool(lid and get_fb_url_for_league(conn, lid))
+        row_id = lg.get("id")
+        if row_id is None:
+            row_id = 0
+        scored.append((0 if has_fb else 1, row_id, lg))
+    scored.sort(key=lambda t: (t[0], t[1]))
+    return [t[2] for t in scored]
+
+
 async def main(
     limit: Optional[int] = None,
     offset: int = 0,
@@ -55,6 +69,9 @@ async def main(
     drain_queue: bool = False,
     purge: bool = False,
     enforce_contract: bool = False,
+    active_window_days: int = 14,
+    priority_fb_mapped_first: bool = True,
+    sport: Optional[str] = None,
 ) -> None:
     print("\n" + "=" * 60)
     print("  FLASHSCORE LEAGUE ENRICHMENT -> SQLite")
@@ -95,8 +112,14 @@ async def main(
         scan_mode = "FULL RELOAD (all leagues)"
 
     elif refresh or weekly:
-        leagues   = get_active_leagues(conn, days=7)
-        scan_mode = f"ACTIVE REFRESH (fixtures ±7 days, {len(leagues) if 'leagues' in dir() else '?'} leagues)"
+        leagues = get_active_leagues(conn, days=active_window_days, sport=sport)
+        if priority_fb_mapped_first and leagues:
+            leagues = _sort_leagues_fb_mapped_first(conn, leagues)
+        sport_note = f", sport={sport}" if sport else ""
+        scan_mode = (
+            f"ACTIVE REFRESH (fixtures ±{active_window_days} days, "
+            f"{len(leagues)} leagues, fb-mapped priority{sport_note})"
+        )
 
     else:
         scan_mode = "COLUMN GAP SCAN"
@@ -160,6 +183,17 @@ async def main(
         print(f"\n  [Done] No leagues need enrichment ({scan_mode}).")
         conn.close()
         return
+
+    try:
+        from Core.Scrapers.registry import get_scraper
+
+        _reg = get_scraper("flashscore", sport or "football")
+        print(
+            f"  [Registry] Flashscore adapter: {type(_reg).__name__} "
+            f"(sport={getattr(_reg, 'sport', sport or 'football')!r})"
+        )
+    except Exception as _e:
+        print(f"  [Registry] (non-fatal) {_e}")
 
     total = len(leagues)
     sync_interval    = max(1, total // 20)
@@ -387,7 +421,9 @@ if __name__ == "__main__":
     parser.add_argument("--reload",      action="store_true",
                         help="Re-enrich ALL leagues regardless of gap scan")
     parser.add_argument("--refresh",     action="store_true",
-                        help="Re-enrich leagues with fixtures in the last/next 7 days")
+                        help="Re-enrich leagues with fixtures in the last/next N days (--active-days)")
+    parser.add_argument("--active-days", type=int, default=14,
+                        help="Window for --refresh/--weekly (default: 14)")
     parser.add_argument("--seasons",     type=int, default=0, metavar="N")
     parser.add_argument("--season",      type=int, default=None, metavar="N")
     parser.add_argument("--all-seasons", action="store_true")
@@ -416,6 +452,7 @@ if __name__ == "__main__":
         reload=args.reload,
         num_seasons=args.seasons, all_seasons=args.all_seasons,
         target_season=args.season, refresh=args.refresh,
+        active_window_days=args.active_days,
         scan_only=args.scan_only, min_severity=args.min_severity,
         drain_queue=args.drain_queue, purge=args.purge,
         enforce_contract=args.enforce_contract,

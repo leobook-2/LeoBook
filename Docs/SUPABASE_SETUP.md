@@ -53,6 +53,13 @@ Flashscore / Football.com scrapers
 | `custom_rules` | User-owned rules; written by Flutter app |
 | `rule_executions` | Written by Flutter app |
 | `learning_weights` | Written by `AdaptiveRecommender`; PK column: `country_league` (renamed from `region_league` in v6.0) |
+| `user_rl_config` | ML filter thresholds; Flutter `RlConfigService` |
+| `user_rule_engines` | Full rule-engine JSON per user; Flutter `RuleEnginesService` |
+| `user_stairway_state` | Mirror of SQLite `stairway_state`; Python `push_stairway_snapshot` |
+| `user_fb_balance` | Football.com balance snapshots; Python `push_fb_balance_snapshot` (e.g. Ch2 P2) |
+| `rl_training_jobs` | Queued RL runs; Flutter enqueue, `Leo.py --process-rl-jobs` worker |
+
+**DDL + RLS:** run [`Data/Supabase/user_features_schema.sql`](../Data/Supabase/user_features_schema.sql) in the SQL Editor, then extend sync-role policies from [`Data/Access/supabase_rls_setup.sql`](../Data/Access/supabase_rls_setup.sql) STEP 7.
 
 ### Computed Views (no sync, no storage)
 

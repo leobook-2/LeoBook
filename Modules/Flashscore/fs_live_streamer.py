@@ -5,8 +5,9 @@
 # Watchdog / catch-up / liveness: see fs_streamer_watchdog.py
 
 """
-Live Score Streamer v3.3
-Scrapes the Flashscore ALL tab every 60 seconds using its own browser context.
+Live Score Streamer v3.5
+Scrapes the Flashscore home (all sports) with the ALL tab selected — 60s poll via DOM.
+Avoids full navigation reload cycles while live matches are present (extends browser session).
 Extracts live, finished, postponed, cancelled, and FRO match statuses.
 Saves results to SQLite and upserts to Supabase.
 
@@ -40,7 +41,12 @@ from Modules.Flashscore.fs_streamer_watchdog import (
 )
 
 STREAM_INTERVAL = 60
-FLASHSCORE_URL = "https://www.flashscore.com/football/"
+# When live matches are present, poll faster (override with LEOBOOK_STREAMER_POLL_LIVE_SEC).
+STREAM_INTERVAL_LIVE = int(os.getenv("LEOBOOK_STREAMER_POLL_LIVE_SEC", "30"))
+# Multi-sport root — ALL tab aggregates football, basketball, etc.
+FLASHSCORE_URL = "https://www.flashscore.com/"
+RECYCLE_INTERVAL_IDLE = 3
+RECYCLE_INTERVAL_LIVE = 12
 _STREAMER_HEARTBEAT_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), '..', '..', 'Data', 'Store', '.streamer_heartbeat'
 )
@@ -336,19 +342,20 @@ async def _click_all_tab(page) -> bool:
 @AIGOSuite.aigo_retry(max_retries=2, delay=30.0, use_aigo=False)
 async def live_score_streamer(playwright: Playwright, user_data_dir: str = None):
     """
-    Main streaming loop v3.4 (Desktop Optimized).
+    Main streaming loop v3.5 (Desktop Optimized).
     - Headless browser with desktop viewport (1920×1080).
-    - 60s extraction interval.
+    - Multi-sport Flashscore home + ALL tab.
+    - 60s DOM extraction interval (no full reload while live matches feed updates).
     - SQLite persistence + Supabase sync.
-    - Recycles browser every 3 cycles.
+    - Recycles browser every N cycles (longer while live matches are present).
     """
-    print(f"\n   [Streamer] Desktop Live Score Streamer v3.4 starting (Headless, 60s, isolation={'ON' if user_data_dir else 'OFF'})...")
-    log_audit_event("STREAMER_START", f"Desktop live score streamer v3.4 initialized (Isolation: {bool(user_data_dir)}).")
+    print(f"\n   [Streamer] Desktop Live Score Streamer v3.5 starting (Headless, 60s, isolation={'ON' if user_data_dir else 'OFF'})...")
+    log_audit_event("STREAMER_START", f"Desktop live score streamer v3.5 initialized (Isolation: {bool(user_data_dir)}).")
 
     global _last_push_sig
-    RECYCLE_INTERVAL = 3
     cycle = 0
     sync = SyncManager()
+    next_recycle_limit = RECYCLE_INTERVAL_IDLE
 
     while True:
         browser = None
@@ -399,8 +406,10 @@ async def live_score_streamer(playwright: Playwright, user_data_dir: str = None)
                 except Exception as e:
                     print(f"   [Streamer] Catch-up error (non-fatal): {e}")
 
+            recycle_limit = next_recycle_limit
             session_cycle = 0
-            while session_cycle < RECYCLE_INTERVAL:
+            had_live_this_session = False
+            while session_cycle < recycle_limit:
                 cycle += 1
                 session_cycle += 1
                 _touch_heartbeat()
@@ -414,6 +423,8 @@ async def live_score_streamer(playwright: Playwright, user_data_dir: str = None)
 
                     live_matches = [m for m in all_matches if m.get('status') in LIVE_STATUSES]
                     resolved_matches = [m for m in all_matches if m.get('status') in RESOLVED_STATUSES]
+                    if live_matches:
+                        had_live_this_session = True
                     current_live_ids = {m['fixture_id'] for m in live_matches}
                     current_resolved_ids = {m['fixture_id'] for m in resolved_matches}
 
@@ -463,7 +474,8 @@ async def live_score_streamer(playwright: Playwright, user_data_dir: str = None)
                             print(f"   [Streamer] Pushing {len(backlog_upds)} backlog resolutions...")
                             await sync.batch_upsert('predictions', backlog_upds)
 
-                    await asyncio.sleep(STREAM_INTERVAL)
+                    _poll = STREAM_INTERVAL_LIVE if live_matches else STREAM_INTERVAL
+                    await asyncio.sleep(_poll)
 
                 except Exception as e:
                     if "Target crashed" in str(e) or "Page crashed" in str(e):
@@ -472,6 +484,15 @@ async def live_score_streamer(playwright: Playwright, user_data_dir: str = None)
                     else:
                         print(f"   [Streamer] Extraction Error cycle {cycle}: {e}")
                         await asyncio.sleep(STREAM_INTERVAL)
+
+            next_recycle_limit = (
+                RECYCLE_INTERVAL_LIVE if had_live_this_session else RECYCLE_INTERVAL_IDLE
+            )
+            if had_live_this_session:
+                print(
+                    f"   [Streamer] Live matches seen — next session runs {next_recycle_limit} cycles "
+                    f"before recycle (DOM updates only, no reload)."
+                )
 
             print(f"   [Streamer] Recycling browser session...")
 

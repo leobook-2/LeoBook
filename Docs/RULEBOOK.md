@@ -46,24 +46,24 @@ Operations MUST NOT start (including live streamer) until startup sync completes
 
 Leo.py operates via three sequential gates to ensure data integrity:
 
-1. **Prologue P1 (Quantity & ID Gate)**: Leagues >= 90% coverage AND Teams >= 3 per league (v7.1). Validates Flashscore IDs — fails if invalid ID rate > 5%. GapScanner feeds this gate: P1 fails if `critical` gap count across `leagues` or `teams` tables exceeds threshold.
-2. **Prologue P2 (History & Quality Gate)**: Two separate jobs (v9.1):
-    - **History Job**: Schedules >= 10 matches per team (seasonal rolling).
-    - **Live Job**: Real-time score validation (v9.5).
+1. **Prologue P1 (Quantity & ID Gate)**: Leagues >= 90% coverage AND Teams >= 3 per league (v7.1). Validates Flashscore IDs — fails if invalid ID rate > 5%. GapScanner feeds this gate: P1 fails if `critical` gap count across `leagues` or `teams` tables exceeds threshold. **No default auto-enrichment**: operators normally run explicit `python Leo.py --enrich-leagues` (and related flags). **Opt-in only**: `python Leo.py --prologue --prologue-p1-enrich` (when Prologue P1 runs) may trigger **one** active-window Flashscore enrichment pass if gates fail — see `Core/System/pipeline.py`.
+2. **Prologue P2 (Flashscore extraction)**: Runs only when P1 passes. **Dual-sport**: separate active-window refresh passes for **football** and **basketball** Flashscore URLs (`infer_flashscore_sport` on `leagues.url`). Each pass uses ±**14 days** (same as `--enrich-leagues --refresh`). **Priority**: fb-mapped leagues first within each sport (`Core/System/prologue_extraction.py` → `fs_league_enricher`).
+3. **Prologue P3 (football.com Phase 0 + basketball hub)**: Runs only when P1 passes. **Football**: no-login calendar/fixture discovery for mapped football leagues (`fb_phase0.py`), **14-day active** + `fb_url` first (football JSON rows only). **Basketball**: schedule-hub discovery + fixture extraction for basketball tournament links (`run_basketball_fb_prologue_phase0` in `prologue_extraction.py`), schedule-page order as active-first proxy.
+
+### 2.3.1 Season / history quality (outside Prologue)
+
+Historical season completeness, GapScanner **critical** gaps on `schedules`, and RL tier reporting remain available via `check_seasons_ready()` / `Core/System/data_readiness.py` and **do not** block the Prologue chain after P2/P3 redefinition. Use `--season-completeness`, `--data-quality`, or `--train-rl` explicitly when you need those jobs.
 
 ### 2.4 Strict Data Contract (v9.5.7)
 - **All-or-Nothing Transactions**: Standardized in `Modules/Flashscore/data_contract.py`. Every worker MUST validate the full match payload before database ingress. Partial data is dropped.
 - **Rich Rationale Serialization**: Intelligence outputs MUST include the reasoning chain (Form, H2H, Standings) as structured JSON in the `intelligence_context` column. Single-string reasoning is deprecated.
-    - **Job A (gate — blocks pipeline)**: 0 critical gaps AND 0 completed season mismatches. CUP_FORMAT competitions (< 4 registered teams) are EXCLUDED from this logic and from COMPLETED classification.
-    - **Job B (informational — never blocks)**: Reports RL tier — RULE_ENGINE (no prior seasons) / PARTIAL (20–50% of leagues have history) / FULL (50%+ have history). Enables the ensemble to scale `W_neural` per league via `data_richness_score`.
-    - GapScanner feeds this gate: `schedules` table gaps at `critical` severity are reported per `(league_id, season)` pair. Only completed seasons with critical gaps block P2.
-3. **Prologue P3 (AI Gate)**: RL Adapters must be trained and ready.
+- **Season / schedule quality (data_readiness / GapScanner)**: `check_seasons_ready()` still distinguishes **Job A** (critical gaps + completed-season consistency) from **Job B** (RL tier: RULE_ENGINE / PARTIAL / FULL). These inform training and ensemble weighting; they are **not** the Prologue P2/P3 pages in `pipeline.py` (those are Flashscore + football.com extraction as in §2.3).
 
 **Readiness Cache (Materialized)**:
 - Gate checks MUST read from `readiness_cache` in the DB for O(1) lookup.
 - The cache is updated after every successful scan or via `--bypass-cache` for forced re-scan.
 
-**Auto-Remediation**: If a gate fails, Leo.py triggers the relevant enrichment or training script automatically (`auto_remediate`) with a **30-minute timeout**. If remediation exceeds the budget, the system logs a warning and proceeds with available data. The pipeline is never blocked indefinitely by auto-remediation.
+**No auto-remediation (All-or-Nothing)**: Failed gates **do not** trigger enrichment or RL training automatically. Operators choose `python Leo.py --enrich-leagues`, `--refresh`, `--seasons`, `--train-rl`, etc. The scheduler may still run **scheduled** tasks (e.g. weekly enrichment, RL training jobs) when those tasks are queued — that is explicit scheduling, not implicit “fix the gate” behavior.
 
 **Readiness cache schema versioning**: `data_readiness.py` tracks `_CACHE_SCHEMA_VERSION = "9.3"`. Any schema change MUST increment this constant — stale cache entries from older versions are silently cleared and a fresh scan runs. Update `_CACHE_SCHEMA_VERSION` in `Core/System/data_readiness.py` on every release.
 
@@ -73,9 +73,9 @@ Leo.py operates via three sequential gates to ensure data integrity:
 Startup Sync: Push-only (local → Supabase, auto-bootstrap if empty)
 Task Scheduler: Execute pending tasks (Weekly Enrichment, predictions)
 Prologue (Data Gates):
-    P1: League/Team Thresholds (90% / 5 teams) — fed by GapScanner
-    P2: Job A (consistency gate) + Job B (RL tier: RULE_ENGINE / PARTIAL / FULL)
-    P3: AI RL Adapter Readiness (Phase Auto-Detection)
+    P1: League/Team Thresholds (90% / 5 teams) — fed by GapScanner; optional --prologue-p1-enrich
+    P2: Flashscore active-window extraction per sport (football + basketball, ±14 days, fb-mapped first) — gated on P1
+    P3: football.com Phase 0 (football) + basketball hub fixture discovery — gated on P1
 Chapter 1 (via Core/System/pipeline.py):
     P1: URL Resolution & Odds Harvesting (v9.0 — Direct Harvesting, no login)
         - SearchDict runs INSIDE fb_manager.py, post-resolution, once per league batch.
@@ -87,6 +87,9 @@ Chapter 1 (via Core/System/pipeline.py):
           their most recent match result is known.
         - Surplus matches are queued as 'day_before_predict' tasks.
     P3: Final Recommendations & Sync (Stairway Gate: 1.20–4.00 odds)
+        - Per (sport, day) picks, then **one daily Stairway slip** per calendar day (merged sports):
+          greedy legs within odds band, combined odds cap — `Scripts/recommend_bets.py` → `stairway_daily_slips.json`.
+        - **Recommender → predictor hook**: `recommender_predictor_hint.json` (league EMA) nudges Ch1 P2 confidence when present (`prediction_pipeline.py`).
 Chapter 2:
     P1: Automated Booking (Football.com)
     P2: Funds & Withdrawal Check
@@ -418,6 +421,31 @@ All six Tier 1 guardrails are **LIVE as of March 10, 2026**. None may be disable
 
 ---
 
-*Last updated: 2026-04-03 (v9.5.9 — Façade exemption added to §2.15; section numbering corrected §2.5–2.19)*
+## 10. CLI matrix (single-flag / primary entrypoints)
+
+| Flag | Purpose |
+|------|---------|
+| `--sync` / `--push` / `--pull` | Supabase ↔ SQLite sync |
+| `--prologue` `[--page N]` `[--prologue-p1-enrich]` | Prologue chain |
+| `--chapter N` `[--page N]` | Chapter 1–2 granular pages |
+| `--enrich-leagues` | Flashscore enrichment (`fs_league_enricher`) |
+| `--recommend` | Ch1 P3 recommendations + slip JSON |
+| `--review` | Full outcome review (+ browser fallback) |
+| `--bet-status` `[--fixture ID]` `[--date …]` | Narrow SQLite bet/prediction status (no browser) |
+| `--fb-balance` `--user-id UUID` | Logged football.com balance |
+| `--streamer` | Spawn live score streamer subprocess |
+| `--train-rl` / `--diagnose-rl` | RL train / inspect |
+| `--data-quality` | Gap scan + resolver utilities |
+
+**Scrapers**: `(site, sport)` implementations are registered in `Core/Scrapers/registry.py` (`get_scraper`). **SQLite catalog**: canonical module is `Data/Access/league_db.py`; `Data/Access/sqlite_catalog.py` is a compatibility re-export.
+
+**Session / streamer env (optional)**:
+
+- `LEOBOOK_FB_PROXY`, `LEOBOOK_FB_USER_AGENT` — persistent football.com context (`fb_session.py`); operator/legal responsibility.
+- `LEOBOOK_STREAMER_POLL_LIVE_SEC` — live-match poll interval (default 30s when live; idle uses 60s). DOM `MutationObserver` fast-path remains a future optional upgrade.
+
+---
+
+*Last updated: 2026-04-04 (v9.6 — dual-sport Prologue, Ch1 P3 slips + predictor hint, scraper registry, CLI matrix, session/streamer env)*
 *Previous: v9.5.0 — Authentication overhaul, increased heartbeat, Settings UI improvements*
 *Authored by: LeoBook Engineering Team — Materialless LLC*

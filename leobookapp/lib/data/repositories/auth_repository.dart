@@ -238,54 +238,26 @@ class AuthRepository {
     }
   }
 
-  // ─── Phone OTP ───────────────────────────────────────────────────
+  // ─── Phone OTP (disabled) ─────────────────────────────────────────
 
-  /// Send OTP via WhatsApp or SMS.
+  static const String kSmsOtpDisabledMessage =
+      'SMS and WhatsApp OTP are disabled. Use email verification or sign in with email/password or Google.';
+
+  /// SMS/WhatsApp OTP is not used (policy). Use [sendSignUpEmailOtp] for sign-up.
   Future<OtpChannel> sendOtp(
     String phone, {
     OtpChannel channel = OtpChannel.sms,
   }) async {
-    Future<void> sendWithChannel(OtpChannel deliveryChannel) {
-      return _supabase.auth.signInWithOtp(
-        phone: phone,
-        channel: deliveryChannel,
-      );
-    }
-
-    try {
-      await sendWithChannel(channel);
-      return channel;
-    } catch (e) {
-      final alternateChannel =
-          channel == OtpChannel.whatsapp ? OtpChannel.sms : OtpChannel.whatsapp;
-
-      if (_shouldTryAlternateOtpChannel(e)) {
-        try {
-          await sendWithChannel(alternateChannel);
-          return alternateChannel;
-        } catch (alternateError) {
-          debugPrint(
-            '[AuthRepository] Alternate OTP channel '
-            '($alternateChannel) failed after $channel: $alternateError',
-          );
-        }
-      }
-
-      debugPrint('[AuthRepository] Send OTP error: $e');
-      rethrow;
-    }
+    debugPrint('[AuthRepository] sendOtp blocked (phone=$phone).');
+    throw Exception(kSmsOtpDisabledMessage);
   }
 
-  /// Update phone number for already-authenticated user (triggers verification).
+  /// Prefer storing optional phone via profiles table; updating auth phone triggers SMS flows.
   Future<void> updatePhone(String phone) async {
-    try {
-      await _supabase.auth.updateUser(
-        UserAttributes(phone: phone),
-      );
-    } catch (e) {
-      debugPrint('[AuthRepository] Update phone error: $e');
-      rethrow;
-    }
+    throw Exception(
+      'Linking phone to Supabase Auth is disabled (avoids SMS OTP). '
+      'Save phone in your profile after sign-up, or use email sign-in.',
+    );
   }
 
   /// Verify OTP token (supports sms and phoneChange).
@@ -304,6 +276,29 @@ class AuthRepository {
   }
 
   // ─── Email Actions (Triggers Designing Templates) ────────────────
+
+  /// Email OTP for sign-up (and passwordless sign-in). Preferred for new accounts.
+  Future<void> sendSignUpEmailOtp(String email) async {
+    try {
+      await _supabase.auth.signInWithOtp(
+        email: email.trim(),
+        emailRedirectTo: _authRedirectUrl,
+        shouldCreateUser: true,
+      );
+    } catch (e) {
+      debugPrint('[AuthRepository] Email sign-up OTP error: $e');
+      rethrow;
+    }
+  }
+
+  /// Verify email OTP (sign-up / magic link flow).
+  Future<AuthResponse> verifyEmailOtpCode(String email, String token) async {
+    return _supabase.auth.verifyOTP(
+      email: email.trim(),
+      token: token.trim(),
+      type: OtpType.email,
+    );
+  }
 
   /// Send Magic Link (One-Click Log In)
   Future<void> sendMagicLink(String email) async {
@@ -485,15 +480,4 @@ class AuthRepository {
     }
   }
 
-  bool _shouldTryAlternateOtpChannel(Object error) {
-    final message = error.toString().toLowerCase();
-
-    return message.contains('unsupported channel') ||
-        message.contains('sms provider') ||
-        message.contains('phone provider') ||
-        message.contains('twilio') ||
-        message.contains('whatsapp') ||
-        message.contains('messagebird') ||
-        message.contains('vonage');
-  }
 }

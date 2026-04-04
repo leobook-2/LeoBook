@@ -7,7 +7,6 @@
 import os
 import json
 import logging
-import asyncio
 import time
 from typing import Tuple, Dict, Optional
 
@@ -326,57 +325,3 @@ def check_rl_ready() -> Tuple[bool, Dict]:
 
     update_cache('PROLOGUE_P3', is_ready, stats)
     return is_ready, stats
-
-
-async def auto_remediate(check: str, conn=None, timeout_minutes: int = 30) -> bool:
-    """Auto-fix data readiness failures with a time budget.
-
-    Args:
-        check: 'leagues', 'seasons', or 'rl'
-        timeout_minutes: Max time to spend on remediation (default 30).
-
-    Returns:
-        True if remediation completed, False if timed out or failed.
-    """
-    if check == "leagues":
-        print("  [AUTO] Running league enrichment...")
-        try:
-            from Scripts.enrich_leagues import main as run_enricher
-            await asyncio.wait_for(run_enricher(), timeout=timeout_minutes * 60)
-            return True
-        except asyncio.TimeoutError:
-            print(f"  [AUTO] Enrichment exceeded {timeout_minutes}min budget -- proceeding with available data.")
-            return False
-        except Exception as e:
-            logger.error(f"  [AUTO] League enrichment failed: {e}")
-            print(f"  [AUTO] Failed: {e}")
-            return False
-
-    elif check == "seasons":
-        print("  [AUTO] Running historical season enrichment (2 seasons)...")
-        try:
-            from Scripts.enrich_leagues import main as run_enricher
-            await asyncio.wait_for(run_enricher(num_seasons=2), timeout=timeout_minutes * 60)
-            return True
-        except asyncio.TimeoutError:
-            print(f"  [AUTO] Season enrichment exceeded {timeout_minutes}min budget -- proceeding with available data.")
-            return False
-        except Exception as e:
-            logger.error(f"  [AUTO] Season enrichment failed: {e}")
-            print(f"  [AUTO] Failed: {e}")
-            return False
-
-    elif check == "rl":
-        print("  [AUTO] Running RL training...")
-        try:
-            from Core.Intelligence.rl.trainer import RLTrainer
-            trainer = RLTrainer()
-            trainer.train_from_fixtures()
-            print("  [AUTO] RL training complete")
-            return True
-        except Exception as e:
-            logger.error(f"  [AUTO] RL training failed: {e}")
-            print(f"  [AUTO] RL training failed: {e}")
-            return False
-
-    return False

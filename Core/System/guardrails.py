@@ -67,6 +67,23 @@ STAIRWAY_TABLE = [
 ]
 
 
+def _iso_week_bucket() -> str:
+    d = now_ng().date()
+    y, w, _ = d.isocalendar()
+    return f"{y}-W{w:02d}"
+
+
+def _push_stairway_to_supabase(user_id: str) -> None:
+    if not user_id:
+        return
+    try:
+        from Data.Access.user_supabase_sync import push_stairway_snapshot
+
+        push_stairway_snapshot(user_id)
+    except Exception:
+        pass
+
+
 class StaircaseTracker:
     """
     Tracks the current position in the 7-step Stairway compounding sequence
@@ -122,18 +139,46 @@ class StaircaseTracker:
         """Alias for get_max_stake — the Stairway stake IS the bet amount."""
         return self.get_max_stake()
 
+    def get_current_step_stake(self) -> int:
+        """Backward-compatible name used by bookers."""
+        return self.get_current_stake()
+
     def advance(self):
         """Win: move to next step. If at step 7, complete the cycle and reset."""
         step = self.current_step
         now = now_ng().isoformat()
 
         if step >= 7:
-            self._conn.execute(
-                "UPDATE stairway_state SET current_step = 1, last_updated = ?, "
-                "last_result = 'CYCLE_COMPLETE', cycle_count = cycle_count + 1 "
-                "WHERE user_id = ?",
-                (now, self._user_id),
-            )
+            cur_bucket = _iso_week_bucket()
+            wb, wcc = None, 0
+            try:
+                row = self._conn.execute(
+                    "SELECT week_bucket, week_cycles_completed FROM stairway_state WHERE user_id = ?",
+                    (self._user_id,),
+                ).fetchone()
+                if row:
+                    wb, wcc = row[0], int(row[1] or 0)
+            except Exception:
+                pass
+            if wb != cur_bucket:
+                new_bucket, new_wcc = cur_bucket, 1
+            else:
+                new_bucket, new_wcc = cur_bucket, wcc + 1
+            try:
+                self._conn.execute(
+                    "UPDATE stairway_state SET current_step = 1, last_updated = ?, "
+                    "last_result = 'CYCLE_COMPLETE', cycle_count = cycle_count + 1, "
+                    "week_bucket = ?, week_cycles_completed = ? "
+                    "WHERE user_id = ?",
+                    (now, new_bucket, new_wcc, self._user_id),
+                )
+            except Exception:
+                self._conn.execute(
+                    "UPDATE stairway_state SET current_step = 1, last_updated = ?, "
+                    "last_result = 'CYCLE_COMPLETE', cycle_count = cycle_count + 1 "
+                    "WHERE user_id = ?",
+                    (now, self._user_id),
+                )
             print(f"  [STAIRWAY] CYCLE COMPLETE! 7-step streak achieved. Resetting to step 1.")
         else:
             self._conn.execute(
@@ -146,6 +191,7 @@ class StaircaseTracker:
                   f"(stake: ₦{next_info['stake']:,})")
 
         self._conn.commit()
+        _push_stairway_to_supabase(self._user_id)
 
     def reset(self):
         """Loss: reset to step 1 with fresh ₦1,000 seed."""
@@ -158,6 +204,7 @@ class StaircaseTracker:
         )
         self._conn.commit()
         print(f"  [STAIRWAY] LOSS at step {step}. Reset to step 1 (₦{STAIRWAY_TABLE[0]['stake']:,})")
+        _push_stairway_to_supabase(self._user_id)
 
     def status(self) -> str:
         """Human-readable status string."""

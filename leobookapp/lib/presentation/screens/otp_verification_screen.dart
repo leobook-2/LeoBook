@@ -26,12 +26,10 @@ class OtpVerificationScreen extends StatefulWidget {
 
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   final _otpController = TextEditingController();
-  final AuthRepository _authRepo = AuthRepository();
   bool _isLoading = false;
   Timer? _resendTimer;
   int _countdown = 30;
   bool _canResend = false;
-  bool _isSmsFallback = false;
 
   @override
   void initState() {
@@ -62,10 +60,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       if (_countdown > 0) {
         setState(() => _countdown--);
       } else {
-        setState(() {
-          _canResend = true;
-          _isSmsFallback = true;
-        });
+        setState(() => _canResend = true);
         timer.cancel();
       }
     });
@@ -73,36 +68,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
   Future<void> _handleResend() async {
     if (!_canResend) return;
-
-    setState(() => _isLoading = true);
-    try {
-      String channelName = 'WhatsApp';
-      if (widget.isPhoneChange) {
-        await _authRepo.updatePhone(widget.phone);
-        channelName = 'SMS';
-      } else {
-        final preferredChannel =
-            _isSmsFallback ? OtpChannel.sms : OtpChannel.whatsapp;
-        final deliveredChannel = await _authRepo.sendOtp(
-          widget.phone,
-          channel: preferredChannel,
-        );
-        channelName = deliveredChannel == OtpChannel.sms ? 'SMS' : 'WhatsApp';
-      }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('OTP resent via $channelName.')),
-      );
-      _startResendTimer();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AuthRepository.mapAuthError(e))),
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AuthRepository.kSmsOtpDisabledMessage)),
+    );
+    _startResendTimer();
   }
 
   Future<void> _verifyOtp() async {
@@ -309,11 +279,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         GestureDetector(
                           onTap: _canResend ? _handleResend : null,
                           child: Text(
-                            _canResend
-                                ? (_isSmsFallback
-                                    ? 'Send via SMS'
-                                    : 'Resend via WhatsApp')
-                                : 'Resend in ${_countdown}s',
+                            _canResend ? 'Resend' : 'Resend in ${_countdown}s',
                             style: GoogleFonts.dmSans(
                               color: _canResend
                                   ? AppColors.primary

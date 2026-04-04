@@ -1,4 +1,5 @@
-# league_db.py: Unified SQLite database layer for ALL LeoBook data.
+# league_db.py: Unified SQLite database layer for ALL LeoBook data (canonical catalog + fixtures + predictions).
+# Catalog note: canonical SQLite API lives here; `Data/Access/sqlite_catalog.py` re-exports this module for naming clarity.
 # Part of LeoBook Data — Access Layer
 #
 # This is THE SINGLE source of truth for all persistent data.
@@ -29,7 +30,7 @@ from Data.Access.league_db_schema import (
 from Data.Access.league_db_leagues import (       # noqa: F401
     upsert_league, get_league_db_id, mark_league_processed,
     get_unprocessed_leagues, get_leagues_with_gaps, get_leagues_missing_seasons,
-    get_stale_leagues, get_all_leagues, get_active_leagues,
+    get_stale_leagues, get_all_leagues, get_active_leagues, infer_flashscore_sport,
 )
 from Data.Access.league_db_teams import (         # noqa: F401
     upsert_team, get_team_id,

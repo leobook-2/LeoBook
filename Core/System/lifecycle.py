@@ -82,6 +82,8 @@ def setup_terminal_logging(args) -> tuple:
         elif getattr(args, 'search_dict', False):    prefix = "leo_search"
         elif getattr(args, 'review', False):         prefix = "leo_review"
         elif getattr(args, 'rule_engine', False):    prefix = "leo_rule_engine"
+        elif getattr(args, 'bet_status', False):     prefix = "leo_bet_status"
+        elif getattr(args, 'fb_balance', False):     prefix = "leo_fb_balance"
         elif getattr(args, 'streamer', False):       prefix = "leo_streamer"
         elif getattr(args, 'prologue', False):       prefix = "leo_prologue"
         elif getattr(args, 'chapter', None):         prefix = f"leo_chapter{args.chapter}"
@@ -155,6 +157,7 @@ Usage Examples:
   python Leo.py --chapter 3                Run the full autonomous cycle (Supervisor).
   python Leo.py --recommend                Show high-confidence betting recommendations.
   python Leo.py --streamer                 Run the live score streamer (watchdog enabled).
+  python Leo.py --fb-balance --user-id UUID  Print football.com balance (logged session).
 
   # --- Maintenance ---
   python Leo.py --data-quality           Deep-scan DB for gaps and fix immediate issues.
@@ -168,6 +171,9 @@ Usage Examples:
                        help='Run a specific chapter (1, 2, or 3)')
     parser.add_argument('--page', type=int, choices=[1, 2, 3], metavar='N',
                        help='Run a specific page within --prologue or --chapter')
+    parser.add_argument('--prologue-p1-enrich', action='store_true',
+                       help='With --prologue when P1 runs: if readiness gates fail, run one active-window '
+                            'Flashscore enrichment pass (opt-in; default is operator-driven --enrich-leagues only).')
 
     # --- Utility Commands ---
     parser.add_argument('--sync', action='store_true',
@@ -186,8 +192,12 @@ Usage Examples:
                        help='Rebuild the search dictionary from SQLite')
     parser.add_argument('--review', action='store_true',
                        help='Run outcome review process only')
+    parser.add_argument('--bet-status', action='store_true',
+                       help='Print prediction/bet status from SQLite (use --fixture and/or --date; no browser)')
     parser.add_argument('--streamer', action='store_true',
                        help='Run the live score streamer independently')
+    parser.add_argument('--fb-balance', action='store_true',
+                       help='Log into football.com (persistent session) and print balance; requires --user-id')
     parser.add_argument('--assets', action='store_true',
                        help='Sync team and league assets (crests/logos) to Supabase Storage')
     parser.add_argument('--limit', type=str, metavar='N or START-END',
@@ -201,7 +211,9 @@ Usage Examples:
     parser.add_argument('--reload', action='store_true',
                        help='Re-enrich ALL leagues regardless of gap scan (use with --enrich-leagues)')
     parser.add_argument('--refresh', '--refresh-leagues', action='store_true', dest='refresh_leagues',
-                       help='Re-enrich leagues with fixtures in the last/next 7 days (use with --enrich-leagues)')
+                       help='Re-enrich leagues with fixtures in the last/next N days (use with --enrich-leagues, --active-days)')
+    parser.add_argument('--active-days', type=int, default=14, metavar='N',
+                       help='±N days window for --refresh (default: 14)')
     parser.add_argument('--seasons', type=int, default=0, metavar='N',
                        help='Number of past seasons to extract (use with --enrich-leagues)')
     parser.add_argument('--season', type=int, default=None, metavar='N',
@@ -248,6 +260,10 @@ Usage Examples:
                             'N (int) = past season offset: 1=most recent past, 2=two seasons ago. '
                             'Label = explicit season string, e.g. "2024/2025" or "2025".'
                         ))
+    parser.add_argument('--rule-engine-id', type=str, default=None, metavar='ID',
+                        help='Rule engine id for expert signal during --train-rl')
+    parser.add_argument('--process-rl-jobs', action='store_true',
+                        help='Process one queued rl_training_jobs row from Supabase')
 
     # --- RL Backtest ---
     parser.add_argument('--backtest-rl', action='store_true',
@@ -317,6 +333,11 @@ Usage Examples:
     args = parser.parse_args()
     if args.page and not args.prologue and args.chapter is None:
         parser.error("--page requires --prologue or --chapter")
+    if getattr(args, 'prologue_p1_enrich', False):
+        if not args.prologue:
+            parser.error("--prologue-p1-enrich requires --prologue")
+        if args.page is not None and args.page != 1:
+            parser.error("--prologue-p1-enrich only applies when Prologue P1 runs (--page 1, or full --prologue without --page)")
     if args.list and not args.rule_engine:
         parser.error("--list requires --rule-engine")
     if args.set_default and not args.rule_engine:
@@ -330,8 +351,10 @@ Usage Examples:
     # --train-season is only meaningful with --train-rl, but we allow it to pass
     # silently without --train-rl (it will simply be ignored) to avoid breaking
     # compound invocations. Emit a warning only.
-    if args.train_season != 'current' and not args.train_rl:
+    if args.train_season != 'current' and not args.train_rl and not args.process_rl_jobs:
         print(f"  [Warning] --train-season={args.train_season!r} has no effect without --train-rl")
+    if args.process_rl_jobs and args.train_rl:
+        parser.error("--process-rl-jobs cannot be combined with --train-rl")
 
     # Parse --limit: supports single int ("5") or range ("501-1000")
     args._limit_offset = 0

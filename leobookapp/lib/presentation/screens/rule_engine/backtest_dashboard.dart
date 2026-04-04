@@ -1,14 +1,19 @@
-// backtest_dashboard.dart: backtest_dashboard.dart: Widget/screen for App — Rule Engine Screens.
+// backtest_dashboard.dart: Rule Engine Studio — engines, stairway, RL jobs, backtests.
 // Part of LeoBook App — Rule Engine Screens
-//
-// Classes: BacktestDashboard, _BacktestDashboardState
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:leobookapp/data/models/rule_config_model.dart';
-import 'package:leobookapp/data/services/leo_service.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
+import 'package:leobookapp/core/constants/stairway_table.dart';
 import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
+import 'package:leobookapp/data/models/rule_config_model.dart';
+import 'package:leobookapp/data/models/user_model.dart';
+import 'package:leobookapp/data/services/leo_service.dart';
+import 'package:leobookapp/data/services/rl_training_jobs_service.dart';
+import 'package:leobookapp/data/services/rule_engines_service.dart';
+import 'package:leobookapp/data/services/user_account_snapshots_service.dart';
+import 'package:leobookapp/logic/cubit/user_cubit.dart';
 import 'rule_editor_screen.dart';
 
 class BacktestDashboard extends StatefulWidget {
@@ -19,79 +24,120 @@ class BacktestDashboard extends StatefulWidget {
 }
 
 class _BacktestDashboardState extends State<BacktestDashboard> {
-  final LeoService _leoService = LeoService();
+  final RuleEnginesService _enginesService = RuleEnginesService();
+  final UserAccountSnapshotsService _snapshots = UserAccountSnapshotsService();
+  final RlTrainingJobsService _rlJobs = RlTrainingJobsService();
+  final LeoService _leoFile = LeoService();
+
   bool _isLoading = false;
   List<Map<String, dynamic>> _results = [];
+  List<RuleConfigModel> _engines = [];
   RuleConfigModel? _currentConfig;
+  UserStairwaySnapshot? _stairway;
+  List<Map<String, dynamic>> _jobRows = [];
+  String? _selectedRlEngineId;
 
   @override
   void initState() {
     super.initState();
-    if (!kIsWeb) _loadInitialData();
+    _loadAll();
   }
 
-  Future<void> _loadInitialData() async {
+  Future<void> _loadAll() async {
     setState(() => _isLoading = true);
-    _currentConfig = await _leoService.loadRuleConfig();
-    if (_currentConfig != null) {
-      await _refreshResults();
+    try {
+      _engines = await _enginesService.loadAll();
+      _currentConfig = await _enginesService.getDefaultEngine();
+      _stairway = await _snapshots.fetchStairway();
+      _jobRows = await _rlJobs.recentJobs(limit: 15);
+      _selectedRlEngineId = _currentConfig?.id;
+      if (!kIsWeb && _currentConfig != null) {
+        await _refreshResults();
+      }
+    } catch (e) {
+      debugPrint('BacktestDashboard load: $e');
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _refreshResults() async {
     if (_currentConfig == null) return;
     try {
-      if (mounted) setState(() => _isLoading = true);
-      // We load the CSV produced by the Python script
-      final results = await _leoService.getBacktestResults(
-        _currentConfig!.name,
-      );
-      if (mounted) {
-        setState(() {
-          _results = results;
-          _isLoading = false;
-        });
-      }
+      final results = await _leoFile.getBacktestResults(_currentConfig!.name);
+      if (mounted) setState(() => _results = results);
     } catch (e) {
-      debugPrint("Error loading results: $e");
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint('Results: $e');
     }
   }
 
   Future<void> _runBacktest() async {
     if (_currentConfig == null) return;
-
     setState(() => _isLoading = true);
     try {
-      await _leoService.triggerBacktest(_currentConfig!);
-
-      // In a real app, we'd listen for a "done" signal or file change
-      // For now, we simulate a wait while the python script (hypothetically) runs
-      // Since we don't have the real-time python runner hooked up yet in this demo flow,
-      // we'll just show a message.
+      await _leoFile.triggerBacktest(_currentConfig!);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Backtest Triggered! Check terminal for Python output (once integrated).',
+              'Backtest triggered. Run Leo.py with --rule-engine --backtest locally for full CSV output.',
             ),
           ),
         );
       }
-
-      // Simulate result loading after a delay (assuming python script runs fast or we mock it)
-      await Future.delayed(const Duration(seconds: 2));
+      await Future<void>.delayed(const Duration(seconds: 2));
       await _refreshResults();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error triggering backtest: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _openEditor(RuleConfigModel? engine) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => RuleEditorScreen(engine: engine)),
+    );
+    if (changed == true) await _loadAll();
+  }
+
+  Future<void> _enqueueRl(UserModel user) async {
+    if (!user.canTrainRl) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('RL training is included with Super LeoBook.')),
+      );
+      return;
+    }
+    final eid = _selectedRlEngineId ?? _currentConfig?.id ?? 'default';
+    try {
+      await _rlJobs.enqueue(ruleEngineId: eid, trainSeason: 'current', phase: 1);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Training job queued. Worker will pick it up.')),
+        );
+      }
+      _jobRows = await _rlJobs.recentJobs(limit: 15);
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  int _customCount() => _enginesService.countCustomEnginesSync(_engines);
+
+  Future<void> _newEngine(UserModel user) async {
+    final maxC = user.maxCustomRuleEngines;
+    if (maxC != null && _customCount() >= maxC) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Free plan allows up to $maxC custom engines. Upgrade to Super for unlimited.')),
+      );
+      return;
+    }
+    await _openEditor(null);
   }
 
   @override
@@ -99,195 +145,104 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
     final isDesktop = MediaQuery.of(context).size.width > 1024;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: isDark ? AppColors.neutral900 : Colors.white,
-      // Removed standard AppBar, using SliverAppBar below
-
-      body: _isLoading
-          ? const LeoLoadingIndicator(label: 'Running backtest...')
-          : CustomScrollView(
-              slivers: [
-                _buildSliverAppBar(isDesktop, isDark),
-                SliverPadding(
-                  padding: EdgeInsets.all(isDesktop ? 32 : 16),
-                  sliver: SliverToBoxAdapter(
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1000),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (isDesktop) ...[
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    "RULE ENGINE",
-                                    style: TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                      letterSpacing: -1,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
+    return BlocBuilder<UserCubit, UserState>(
+      builder: (context, ustate) {
+        final user = ustate.user;
+        return Scaffold(
+          backgroundColor: isDark ? AppColors.neutral900 : Colors.white,
+          body: _isLoading && _engines.isEmpty
+              ? const LeoLoadingIndicator(label: 'Loading Rule Engine Studio…')
+              : CustomScrollView(
+                  slivers: [
+                    _buildSliverAppBar(isDesktop, isDark),
+                    SliverPadding(
+                      padding: EdgeInsets.all(isDesktop ? 32 : 16),
+                      sliver: SliverToBoxAdapter(
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1000),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (isDesktop) ...[
                                   Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _buildHeaderAction(
-                                        Icons.settings_outlined,
-                                        "EDITOR",
-                                        () async {
-                                          await Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  const RuleEditorScreen(),
-                                            ),
-                                          );
-                                          _loadInitialData();
-                                        },
+                                      const Text(
+                                        'RULE ENGINE STUDIO',
+                                        style: TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
+                                          letterSpacing: -1,
+                                          fontStyle: FontStyle.italic,
+                                        ),
                                       ),
-                                      const SizedBox(width: 12),
-                                      _buildHeaderAction(
-                                        Icons.refresh,
-                                        "REFRESH",
-                                        _refreshResults,
+                                      Wrap(
+                                        spacing: 8,
+                                        children: [
+                                          _hdrBtn(Icons.add, 'NEW', () => _newEngine(user)),
+                                          _hdrBtn(Icons.edit_outlined, 'EDIT', () async {
+                                            if (_currentConfig != null) {
+                                              await _openEditor(_currentConfig);
+                                            }
+                                          }),
+                                          _hdrBtn(Icons.refresh, 'REFRESH', _loadAll),
+                                        ],
                                       ),
                                     ],
                                   ),
+                                  const SizedBox(height: 24),
                                 ],
-                              ),
-                              const SizedBox(height: 32),
-                            ],
-                            _buildSummaryCard(isDesktop),
-                            const SizedBox(height: 32),
-                            const Text(
-                              "HISTORICAL RESULTS",
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.textGrey,
-                                letterSpacing: 2,
-                              ),
+                                _stairwayCard(),
+                                const SizedBox(height: 20),
+                                _enginesSection(user),
+                                const SizedBox(height: 20),
+                                _rlSection(user),
+                                const SizedBox(height: 24),
+                                _buildSummaryCard(isDesktop),
+                                const SizedBox(height: 24),
+                                const Text(
+                                  'HISTORICAL RESULTS',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.textGrey,
+                                    letterSpacing: 2,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                if (isDesktop) _buildResultsGrid() else _buildResultsList(),
+                              ],
                             ),
-                            const SizedBox(height: 16),
-                            if (isDesktop)
-                              _buildResultsGrid()
-                            else
-                              _buildResultsList(),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                  ],
                 ),
-                // Add some padding at the bottom so content isn't hidden behind FAB
-                const SliverToBoxAdapter(child: SizedBox(height: 80)),
-              ],
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButton: Padding(
+            padding: const EdgeInsets.only(bottom: 80),
+            child: FloatingActionButton.extended(
+              onPressed: kIsWeb || _currentConfig == null ? null : _runBacktest,
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              elevation: 4,
+              label: const Text(
+                'TRIGGER BACKTEST',
+                style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1),
+              ),
+              icon: const Icon(Icons.play_arrow_rounded),
             ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 80.0),
-        child: FloatingActionButton.extended(
-          onPressed: _runBacktest,
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          elevation: 4,
-          label: const Text(
-            "RUN BACKTEST",
-            style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1),
           ),
-          icon: const Icon(Icons.play_arrow_rounded),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildSliverAppBar(bool isDesktop, bool isDark) {
-    if (isDesktop) return const SliverToBoxAdapter(child: SizedBox.shrink());
-
-    return SliverAppBar(
-      expandedHeight: 120.0,
-      floating: false,
-      pinned: true,
-      backgroundColor: isDark ? AppColors.neutral900 : Colors.white,
-      surfaceTintColor: Colors.transparent,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.settings),
-          onPressed: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const RuleEditorScreen(),
-              ),
-            );
-            _loadInitialData();
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          onPressed: _refreshResults,
-        ),
-      ],
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "RULE ENGINE",
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                color: AppColors.primary.withValues(alpha: 0.8),
-                letterSpacing: 2,
-              ),
-            ),
-            const Text(
-              "Dashboard",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: -0.5,
-              ),
-            ),
-          ],
-        ),
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                    colors: [
-                      AppColors.primary.withValues(alpha: 0.15),
-                      AppColors.neutral900,
-                    ],
-                ),
-              ),
-            ),
-            Positioned(
-              right: -20,
-              top: -20,
-              child: Icon(
-                Icons.analytics,
-                size: 120,
-                color: Colors.white.withValues(alpha: 0.05),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderAction(IconData icon, String label, VoidCallback onTap) {
+  Widget _hdrBtn(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -317,6 +272,246 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
     );
   }
 
+  Widget _stairwayCard() {
+    final s = _stairway;
+    final step = s?.currentStep ?? 1;
+    final info = stairwayStepInfo(step);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.stairs_rounded, color: AppColors.primary.withValues(alpha: 0.9)),
+              const SizedBox(width: 8),
+              const Text(
+                'PROJECT STAIRWAY',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textGrey,
+                  letterSpacing: 1.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            s == null
+                ? 'No stairway sync yet. Run Leo with --user-id after placing bets.'
+                : 'Step $step / 7 · Stake ₦${info['stake']} · Target odds ${info['odds_target']}',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          if (s != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Cycles: ${s.cycleCount} · This week: ${s.weekCyclesCompleted} completed'
+              '${s.lastResult != null ? ' · Last: ${s.lastResult}' : ''}',
+              style: const TextStyle(fontSize: 12, color: AppColors.textGrey),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _enginesSection(UserModel user) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'YOUR ENGINES',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textGrey,
+                letterSpacing: 2,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => _newEngine(user),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('New engine'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_engines.isEmpty)
+          const Text('No engines yet.', style: TextStyle(color: AppColors.textGrey))
+        else
+          ..._engines.map((e) {
+            final isDef = e.isDefault;
+            return Card(
+              color: AppColors.neutral900.withValues(alpha: 0.6),
+              child: ListTile(
+                title: Text(e.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(
+                  e.description.isEmpty ? e.id : e.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: Wrap(
+                  spacing: 4,
+                  children: [
+                    if (isDef)
+                      const Chip(
+                        label: Text('DEFAULT', style: TextStyle(fontSize: 10)),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 20),
+                      onPressed: () => _openEditor(e),
+                    ),
+                    if (e.id != 'default')
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 20),
+                        onPressed: () async {
+                          await _enginesService.deleteEngine(e.id);
+                          await _loadAll();
+                        },
+                      ),
+                  ],
+                ),
+                onTap: () async {
+                  await _enginesService.setDefaultEngine(e.id);
+                  await _loadAll();
+                },
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _rlSection(UserModel user) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'RL TRAINING',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textGrey,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _engines.isEmpty
+                    ? null
+                    : (_selectedRlEngineId ?? _engines.first.id),
+                decoration: const InputDecoration(
+                  labelText: 'Engine for expert signal',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: _engines
+                    .map((e) => DropdownMenuItem(value: e.id, child: Text(e.name)))
+                    .toList(),
+                onChanged: _engines.isEmpty ? null : (v) => setState(() => _selectedRlEngineId = v),
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: () => _enqueueRl(user),
+              icon: const Icon(Icons.model_training),
+              label: const Text('Queue job'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_jobRows.isEmpty)
+          const Text('No jobs yet.', style: TextStyle(color: AppColors.textGrey, fontSize: 12))
+        else
+          ..._jobRows.take(5).map(
+                (j) => ListTile(
+                  dense: true,
+                  title: Text(
+                    '${j['status']} · ${j['rule_engine_id']}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    '${j['requested_at'] ?? ''}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
+      ],
+    );
+  }
+
+  Widget _buildSliverAppBar(bool isDesktop, bool isDark) {
+    if (isDesktop) return const SliverToBoxAdapter(child: SizedBox.shrink());
+
+    return SliverAppBar(
+      expandedHeight: 120,
+      floating: false,
+      pinned: true,
+      backgroundColor: isDark ? AppColors.neutral900 : Colors.white,
+      surfaceTintColor: Colors.transparent,
+      actions: [
+        IconButton(icon: const Icon(Icons.add), onPressed: () => _newEngine(context.read<UserCubit>().state.user)),
+        IconButton(icon: const Icon(Icons.refresh), onPressed: _loadAll),
+      ],
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'RULE ENGINE STUDIO',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: AppColors.primary.withValues(alpha: 0.8),
+                letterSpacing: 2,
+              ),
+            ),
+            const Text(
+              'Engines · Stairway · RL',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        background: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                AppColors.primary.withValues(alpha: 0.15),
+                AppColors.neutral900,
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSummaryCard(bool isDesktop) {
     int total = _results.length;
     int correct = _results.where((r) => r['outcome_correct'] == 'True').length;
@@ -332,14 +527,10 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.analytics_outlined,
-                color: AppColors.primary,
-                size: 20,
-              ),
+              const Icon(Icons.analytics_outlined, color: AppColors.primary, size: 20),
               const SizedBox(width: 8),
               Text(
-                "CONFIG: ${_currentConfig?.name.toUpperCase() ?? 'DEFAULT'}",
+                'CONFIG: ${_currentConfig?.name.toUpperCase() ?? 'DEFAULT'}',
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
@@ -353,14 +544,12 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _statItem("TOTAL MATCHES", "$total"),
+              _statItem('TOTAL MATCHES', '$total'),
               _statItem(
-                "WIN RATE",
-                isNaN(correct / total)
-                    ? "N/A"
-                    : "${(correct / total * 100).toStringAsFixed(1)}%",
+                'WIN RATE',
+                total == 0 ? 'N/A' : '${(correct / total * 100).toStringAsFixed(1)}%',
               ),
-              _statItem("PROFIT/LOSS", "N/A"),
+              _statItem('PROFIT/LOSS', 'N/A'),
             ],
           ),
         ],
@@ -368,10 +557,8 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
     );
   }
 
-  bool isNaN(double v) => v.isNaN || v.isInfinite;
-
   Widget _statItem(String label, String value) {
-    final isPrimary = label == "WIN RATE";
+    final isPrimary = label == 'WIN RATE';
     return Column(
       children: [
         Text(
@@ -400,7 +587,7 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
     if (_results.isEmpty) {
       return const Center(
         child: Text(
-          "No backtest results found. Run a backtest!",
+          'No local backtest CSV yet. Desktop + Leo.py produce backtest files.',
           style: TextStyle(color: AppColors.textGrey),
         ),
       );
@@ -424,52 +611,22 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
             color: AppColors.neutral900.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isWin
-                  ? AppColors.success.withValues(alpha: 0.2)
-                  : Colors.white10,
+              color: isWin ? AppColors.success.withValues(alpha: 0.2) : Colors.white10,
             ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "MATCH #${index + 1}",
-                    style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textGrey,
-                    ),
-                  ),
-                  if (isWin)
-                    const Icon(
-                      Icons.check_circle_rounded,
-                      color: AppColors.success,
-                      size: 14,
-                    ),
-                ],
+              Text(
+                'MATCH #${index + 1}',
+                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.textGrey),
               ),
               const Spacer(),
               Text(
-                "${row['home_team']} VS ${row['away_team']}".toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+                '${row['home_team']} VS ${row['away_team']}'.toUpperCase(),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "PRED: ${row['prediction']} · ACTUAL: ${row['actual_score']}",
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: AppColors.textGrey,
-                  fontWeight: FontWeight.bold,
-                ),
               ),
             ],
           ),
@@ -480,11 +637,9 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
 
   Widget _buildResultsList() {
     if (_results.isEmpty) {
-      return const Center(
-        child: Text(
-          "No backtest results found. Run a backtest!",
-          style: TextStyle(color: AppColors.textGrey),
-        ),
+      return const Text(
+        'No local backtest rows. Use desktop workflow with Leo.py for CSV output.',
+        style: TextStyle(color: AppColors.textGrey),
       );
     }
     return ListView.builder(
@@ -497,21 +652,12 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           color: AppColors.surfaceDark,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
           child: ListTile(
-            title: Text(
-              "${row['home_team']} vs ${row['away_team']}",
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            title: Text('${row['home_team']} vs ${row['away_team']}'),
+            trailing: Icon(
+              isWin ? Icons.check_circle : Icons.cancel,
+              color: isWin ? AppColors.success : AppColors.liveRed,
             ),
-            subtitle: Text(
-              "Pred: ${row['prediction']} | Actual: ${row['actual_score']}",
-              style: const TextStyle(fontSize: 12),
-            ),
-            trailing: isWin
-                ? const Icon(Icons.check_circle, color: AppColors.success)
-                : const Icon(Icons.cancel, color: AppColors.liveRed),
           ),
         );
       },

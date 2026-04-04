@@ -60,9 +60,8 @@ class UserCubit extends Cubit<UserState> {
   void _emitCorrectState(UserModel model) {
     if (!model.isProfileComplete) {
       emit(UserProfileIncomplete(user: model));
-    } else if (!model.isPhoneVerified) {
-      emit(UserNeedsVerification(user: model, phone: model.phone ?? ''));
     } else {
+      // SMS/WhatsApp OTP is disabled; do not gate the app on phone confirmation.
       emit(UserAuthenticated(user: model));
     }
   }
@@ -213,6 +212,45 @@ class UserCubit extends Cubit<UserState> {
         message: AuthRepository.mapAuthError(
           e,
           fallbackMessage: 'Unable to send the verification code right now.',
+        ),
+      ));
+    }
+  }
+
+  Future<void> sendSignUpEmailOtp(String email) async {
+    emit(UserLoading(user: state.user));
+    try {
+      await _authRepo.sendSignUpEmailOtp(email);
+      emit(UserInitial(user: state.user));
+    } catch (e) {
+      emit(UserError(
+        user: state.user,
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Unable to send the verification email right now.',
+        ),
+      ));
+    }
+  }
+
+  Future<void> verifyEmailOtp(String email, String token) async {
+    emit(UserLoading(user: state.user));
+    try {
+      final response = await _authRepo.verifyEmailOtpCode(email, token);
+      if (response.user != null) {
+        _emitCorrectState(UserModel.fromSupabaseUser(response.user!));
+      } else {
+        emit(UserError(
+          user: state.user,
+          message: 'Invalid verification code. Please try again.',
+        ));
+      }
+    } catch (e) {
+      emit(UserError(
+        user: state.user,
+        message: AuthRepository.mapAuthError(
+          e,
+          fallbackMessage: 'Invalid verification code. Please try again.',
         ),
       ));
     }

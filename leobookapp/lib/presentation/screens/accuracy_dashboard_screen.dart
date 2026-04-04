@@ -16,10 +16,10 @@ class AccuracyDashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const TierGate(
-      requirement: TierRequirement.pro,
+      requirement: TierRequirement.authenticated,
       featureName: 'Accuracy Dashboard',
       featureDescription:
-          'View your per-market win rates, streaks, and ROI analytics. Pro only.',
+          'Sign in to view your per-market win rates, streaks, and ROI analytics.',
       child: _AccuracyContent(),
     );
   }

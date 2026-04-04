@@ -62,7 +62,7 @@ from Core.System.scheduler import (
     TaskScheduler, TASK_WEEKLY_ENRICHMENT, TASK_DAY_BEFORE_PREDICT, TASK_RL_TRAINING
 )
 from Core.System.data_readiness import (
-    check_leagues_ready, check_seasons_ready, check_rl_ready, auto_remediate
+    check_leagues_ready, check_seasons_ready, check_rl_ready,
 )
 from Data.Access.db_helpers import init_csvs, log_audit_event
 from Data.Access.sync_manager import SyncManager, run_full_sync
@@ -139,7 +139,7 @@ signal.signal(signal.SIGINT,  _shutdown)
 # ============================================================
 
 from Core.System.pipeline import (  # noqa: page functions
-    run_startup_sync, auto_remediate,
+    run_startup_sync,
     run_prologue_p1, run_prologue_p2, run_prologue_p3,
     run_chapter_1_p1, run_chapter_1_p2, run_chapter_1_p3,
     run_chapter_2_p1, run_chapter_2_p2,
@@ -209,6 +209,42 @@ async def run_utility(args):
             await run_review_process(p)
             print_accuracy_report()
             await run_accuracy_generation()
+
+    elif getattr(args, 'bet_status', False):
+        print("\n  --- LEO: Bet status (SQLite) ---")
+        from Data.Access.outcome_reviewer import print_bet_status_summary
+
+        _dates = getattr(args, "date", None)
+        _fid = (getattr(args, "fixture", None) or "").strip() or None
+        print_bet_status_summary(
+            fixture_id=_fid,
+            dates=list(_dates) if _dates else None,
+        )
+
+    elif getattr(args, 'fb_balance', False):
+        uid = (getattr(args, 'user_id', '') or '').strip()
+        if not uid:
+            print("  [Error] --fb-balance requires --user-id <UUID> (stored Football.com credentials).")
+            return
+        print("\n  --- LEO: Football.com balance (logged session) ---")
+        from pathlib import Path
+        from playwright.async_api import async_playwright
+        from Modules.FootballCom.fb_session import launch_browser_with_retry
+        from Modules.FootballCom.navigator import load_or_create_session
+
+        user_data_dir = Path("Data/Auth/ChromeData_v3").absolute()
+        user_data_dir.mkdir(parents=True, exist_ok=True)
+
+        async def _bal():
+            async with async_playwright() as p:
+                context = await launch_browser_with_retry(p, user_data_dir)
+                try:
+                    await load_or_create_session(context, uid)
+                finally:
+                    await context.close()
+
+        asyncio.run(_bal())
+        print("  [SUCCESS] Balance check complete.")
 
     elif args.streamer:
         import subprocess
@@ -297,15 +333,26 @@ async def run_utility(args):
         num_seasons = getattr(args, 'seasons', 0)
         all_seasons = getattr(args, 'all_seasons', False)
         target_season = getattr(args, 'season', None)
-        await run_league_enricher(limit=limit, offset=offset, reset=reset,
-                                  reload=reload_all,
-                                  num_seasons=num_seasons, all_seasons=all_seasons,
-                                  target_season=target_season, refresh=refresh)
+        active_days = getattr(args, "active_days", 14)
+        await run_league_enricher(
+            limit=limit, offset=offset, reset=reset,
+            reload=reload_all,
+            num_seasons=num_seasons, all_seasons=all_seasons,
+            target_season=target_season, refresh=refresh,
+            active_window_days=active_days,
+        )
 
     elif args.upgrade_crests:
         print("\n  --- LEO: Upgrade Team Crests to HQ Logos ---")
         limit = getattr(args, 'limit', None)
         upgrade_all_crests(limit=limit)
+
+    elif getattr(args, 'process_rl_jobs', False):
+        print("\n  --- LEO: Process RL training job queue ---")
+        from Data.Access.rl_jobs_worker import process_rl_training_jobs_once
+
+        process_rl_training_jobs_once()
+        print("  [SUCCESS] RL job processor finished.")
 
     elif args.train_rl:
         print("\n  --- LEO: RL Model Training ---")
@@ -315,6 +362,7 @@ async def run_utility(args):
         cold = getattr(args, 'cold', False)
         resume = getattr(args, 'resume', False)
         limit = getattr(args, '_limit_count', None)  # Use --limit for days if needed
+        rule_engine_id = getattr(args, 'rule_engine_id', None)
 
         # ── Season scope resolution ──────────────────────────────────────────────
         # --train-season accepts: "current", "all", an integer offset (e.g. "1"),
@@ -331,6 +379,7 @@ async def run_utility(args):
             trainer.train_from_fixtures(
                 phase=phase, cold=cold, limit_days=limit,
                 resume=resume, target_season=train_season,
+                rule_engine_id=rule_engine_id,
             )
         else:
             print(f"  [RL] Starting Phase {phase} training (season={train_season!r})...")
@@ -339,6 +388,7 @@ async def run_utility(args):
             trainer.train_from_fixtures(
                 phase=phase, cold=cold, limit_days=limit,
                 resume=resume, target_season=train_season,
+                rule_engine_id=rule_engine_id,
             )
         print("  [SUCCESS] RL training session complete.")
 
@@ -454,11 +504,11 @@ if __name__ == "__main__":
     is_utility = any([args.sync, getattr(args, 'push', False), getattr(args, 'pull', False),
                       getattr(args, 'reset_sync', None),
                       args.recommend, args.accuracy,
-                      args.search_dict, args.review,
-                      args.rule_engine, args.streamer,
+                      args.search_dict, args.review, getattr(args, 'bet_status', False),
+                      args.rule_engine, getattr(args, 'fb_balance', False), args.streamer,
                       args.assets,
                       args.logos, args.enrich_leagues, args.upgrade_crests,
-                      args.train_rl, args.backtest_rl,
+                      args.train_rl, getattr(args, 'process_rl_jobs', False), args.backtest_rl,
                       args.diagnose_rl,
                       getattr(args, 'push_models', False),
                       getattr(args, 'pull_models', False),
