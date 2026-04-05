@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:leobookapp/data/models/match_model.dart';
+import 'package:leobookapp/data/models/recommendation_model.dart';
 import 'package:leobookapp/data/repositories/data_repository.dart';
 import 'package:leobookapp/data/repositories/news_repository.dart';
 
