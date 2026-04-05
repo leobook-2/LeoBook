@@ -229,19 +229,29 @@ prepare_release_signing() {
   key_alias="$(first_non_empty_env LEOBOOK_KEY_ALIAS KEY_ALIAS || true)"
   key_password="$(first_non_empty_env LEOBOOK_KEY_PASSWORD KEY_PASSWORD || true)"
 
-  if [ -z "$keystore_path" ] || [ -z "$store_password" ] || [ -z "$key_alias" ] || [ -z "$key_password" ]; then
+  if [ -z "$store_password" ] || [ -z "$key_alias" ] || [ -z "$key_password" ]; then
     echo "ERROR: Signing credentials missing from leobookapp/.env"
     exit 1
   fi
 
-  [ ! -f "$keystore_path" ] && echo "ERROR: Keystore not found at $keystore_path" && exit 1
-
-  echo "✓ Signing configuration loaded from .env"
-
   TEMP_SIGNING_DIR="$(mktemp -d)"
   local temp_keystore="$TEMP_SIGNING_DIR/leobook-release.jks"
 
-  cp "$keystore_path" "$temp_keystore"
+  # Resolve keystore: file path → base64 decode → error
+  if [ -n "$keystore_path" ] && [ -f "$keystore_path" ]; then
+    cp "$keystore_path" "$temp_keystore"
+    echo "✓ Keystore loaded from file: $keystore_path"
+  elif [ -n "${LEOBOOK_KEYSTORE_BASE64:-}" ]; then
+    printf '%s' "$LEOBOOK_KEYSTORE_BASE64" | base64 -d > "$temp_keystore" 2>/dev/null
+    if [ ! -s "$temp_keystore" ]; then
+      echo "ERROR: Failed to decode LEOBOOK_KEYSTORE_BASE64"
+      exit 1
+    fi
+    echo "✓ Keystore decoded from LEOBOOK_KEYSTORE_BASE64"
+  else
+    echo "ERROR: No keystore found. Set LEOBOOK_KEYSTORE_PATH to a valid file or LEOBOOK_KEYSTORE_BASE64."
+    exit 1
+  fi
 
   if [ -f "$KEY_PROPERTIES_FILE" ]; then
     KEY_PROPERTIES_BACKUP="$TEMP_SIGNING_DIR/key.properties.backup"
