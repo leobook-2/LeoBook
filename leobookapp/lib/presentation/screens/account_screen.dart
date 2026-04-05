@@ -933,10 +933,12 @@ class _FootballComBalanceCardState extends State<_FootballComBalanceCard> {
     }
     setState(() => _loading = true);
     final b = await _svc.fetchFbBalance();
-    if (mounted) setState(() {
-      _bal = b;
-      _loading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _bal = b;
+        _loading = false;
+      });
+    }
   }
 
   @override

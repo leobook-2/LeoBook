@@ -3,6 +3,7 @@
 //
 // Classes: RlConfig, RlConfigService
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Mirrors the backend user_rl_config table row.
@@ -121,7 +122,7 @@ class RlConfigService {
     } catch (e) {
       // Non-fatal — local rule engine file remains the source of truth
       // for the backtest/rule engine feature; this is best-effort sync.
-      print('[RlConfigService] save failed: $e');
+      debugPrint('[RlConfigService] save failed: $e');
     }
   }
 
@@ -135,7 +136,7 @@ class RlConfigService {
           .from('user_rl_config')
           .upsert({'user_id': uid, ...fields});
     } catch (e) {
-      print('[RlConfigService] patch failed: $e');
+      debugPrint('[RlConfigService] patch failed: $e');
     }
   }
 
@@ -150,7 +151,7 @@ class RlConfigService {
           .delete()
           .eq('user_id', uid);
     } catch (e) {
-      print('[RlConfigService] delete failed: $e');
+      debugPrint('[RlConfigService] delete failed: $e');
     }
   }
 }

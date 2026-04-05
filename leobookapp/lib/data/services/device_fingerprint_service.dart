@@ -89,7 +89,7 @@ class DeviceFingerprintService {
       return UserDeviceFingerprint.fromRow(Map<String, dynamic>.from(row));
     } catch (e) {
       debugPrint('DeviceFingerprintService.load: $e');
-      return UserDeviceFingerprint.empty(uid ?? '');
+      return UserDeviceFingerprint.empty(uid);
     }
   }
 
