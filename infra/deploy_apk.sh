@@ -8,6 +8,13 @@
 
 set -euo pipefail
 
+# Ensure the script is running under Bash (prevents syntax errors if invoked with sh/dash)
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "ERROR: This script must be executed with bash (not sh or dash)." >&2
+  echo "Try: bash ./deploy_apk.sh" >&2
+  exit 1
+fi
+
 SUPABASE_URL="https://jefoqzewyvscdqcpnjxu.supabase.co"
 BUCKET="app-releases"
 EXPECTED_APPLICATION_ID="com.materialless.leobookapp"
