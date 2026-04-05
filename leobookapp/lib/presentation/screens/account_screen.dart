@@ -18,6 +18,7 @@ import 'package:leobookapp/presentation/screens/super_leobook_screen.dart';
 import 'package:leobookapp/presentation/screens/subscription_screen.dart';
 import 'package:leobookapp/presentation/screens/stairway_screen.dart';
 import 'package:leobookapp/presentation/screens/accuracy_dashboard_screen.dart';
+import 'package:leobookapp/presentation/screens/fingerprint_settings_screen.dart';
 import 'package:leobookapp/data/services/user_account_snapshots_service.dart';
 
 class AccountScreen extends StatelessWidget {
@@ -147,7 +148,12 @@ class AccountScreen extends StatelessWidget {
                         _settingsTile(
                           icon: Icons.tune_rounded,
                           title: 'Advanced',
-                          onTap: () {},
+                          subtitle: 'Session fingerprint',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const FingerprintSettingsScreen(),
+                            ),
+                          ),
                         ),
                       ]),
                       const SizedBox(height: 28),

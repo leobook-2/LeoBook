@@ -337,7 +337,10 @@ async def run_chapter_2_p2(p):
 
         if await check_withdrawal_approval():
             from Core.System.withdrawal_checker import pending_withdrawal
-            await execute_withdrawal(pending_withdrawal["amount"])
+            await execute_withdrawal(
+                pending_withdrawal["amount"],
+                user_id=state.get("user_id") or None,
+            )
 
         log_audit_event("CH2_P2",
                         f"Withdrawal check completed. Balance: {state.get('current_balance', 'N/A')}",

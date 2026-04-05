@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build, verify, and upload the LeoBook Android APK to Supabase Storage.
+# This version reads signing credentials directly from leobookapp/.env
 #
 # Usage:
 #   ./deploy_apk.sh
@@ -7,13 +8,20 @@
 
 set -euo pipefail
 
+# Ensure the script is running under Bash (prevents syntax errors if invoked with sh/dash)
+if [ -z "${BASH_VERSION:-}" ]; then
+  echo "ERROR: This script must be executed with bash (not sh or dash)." >&2
+  echo "Try: bash ./deploy_apk.sh" >&2
+  exit 1
+fi
+
 SUPABASE_URL="https://jefoqzewyvscdqcpnjxu.supabase.co"
 BUCKET="app-releases"
 EXPECTED_APPLICATION_ID="com.materialless.leobookapp"
 DEFAULT_UPDATE_ABI="arm64-v8a"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$SCRIPT_DIR/leobookapp"
+SCRIPT_DIR="\( (cd " \)(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$SCRIPT_DIR/../leobookapp"
 ANDROID_DIR="$APP_DIR/android"
 PUBSPEC="$APP_DIR/pubspec.yaml"
 APK_OUTPUT="$APP_DIR/build/app/outputs/flutter-apk"
@@ -54,7 +62,7 @@ load_env_file() {
   local key=""
   local value=""
   while IFS= read -r line || [ -n "$line" ]; do
-    line="${line%$'\r'}"
+    line="\( {line% \)'\r'}"
 
     case "$line" in
       ""|\#*)
@@ -62,13 +70,13 @@ load_env_file() {
         ;;
     esac
 
-    if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+    if [[ "\( line" =\~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*) \) ]]; then
       key="${BASH_REMATCH[1]}"
       value="${BASH_REMATCH[2]}"
 
-      if [[ "$value" =~ ^\"(.*)\"$ ]]; then
+      if [[ "\( value" =\~ ^\"(.*)\" \) ]]; then
         value="${BASH_REMATCH[1]}"
-      elif [[ "$value" =~ ^\'(.*)\'$ ]]; then
+      elif [[ "\( value" =\~ ^\'(.*)\' \) ]]; then
         value="${BASH_REMATCH[1]}"
       fi
 
@@ -86,7 +94,7 @@ read_local_property() {
   fi
 
   local value
-  value="$(sed -n "s/^${key}=//p" "$LOCAL_PROPERTIES_FILE" | head -1 | tr -d '\r')"
+  value="\( (sed -n "s/^ \){key}=//p" "$LOCAL_PROPERTIES_FILE" | head -1 | tr -d '\r')"
   if [ -z "$value" ]; then
     return 1
   fi
@@ -158,7 +166,7 @@ resolve_android_tool() {
     return 0
   fi
 
-  if [ -n "${ANDROID_SDK_ROOT:-}" ] && [ -d "${ANDROID_SDK_ROOT:-}" ]; then
+  if [ -n "\( {ANDROID_SDK_ROOT:-}" ] && [ -d " \){ANDROID_SDK_ROOT:-}" ]; then
     :
   else
     ANDROID_SDK_ROOT="$(resolve_android_sdk_root || true)"
@@ -177,7 +185,7 @@ resolve_android_tool() {
 
   local resolved_path
   resolved_path="$(
-    find "$build_tools_dir" -maxdepth 2 -type f \( -name "$tool_name" -o -name "${tool_name}.exe" -o -name "${tool_name}.bat" \) \
+    find "$build_tools_dir" -maxdepth 2 -type f \( -name "\( tool_name" -o -name " \){tool_name}.exe" -o -name "${tool_name}.bat" \) \
       | sort -V \
       | tail -1
   )"
@@ -211,46 +219,29 @@ prepare_release_signing() {
     return 0
   fi
 
-  local keystore_base64=""
   local keystore_path=""
   local store_password=""
   local key_alias=""
   local key_password=""
 
-  keystore_base64="$(first_non_empty_env LEOBOOK_KEYSTORE_BASE64 ANDROID_KEYSTORE_BASE64 KEYSTORE_BASE64 || true)"
-  keystore_path="$(first_non_empty_env LEOBOOK_KEYSTORE_PATH ANDROID_KEYSTORE_PATH KEYSTORE_PATH || true)"
-  store_password="$(first_non_empty_env LEOBOOK_STORE_PASSWORD ANDROID_KEYSTORE_PASSWORD STORE_PASSWORD || true)"
-  key_alias="$(first_non_empty_env LEOBOOK_KEY_ALIAS ANDROID_KEY_ALIAS KEY_ALIAS || true)"
-  key_password="$(first_non_empty_env LEOBOOK_KEY_PASSWORD ANDROID_KEY_PASSWORD KEY_PASSWORD || true)"
+  keystore_path="$(first_non_empty_env LEOBOOK_KEYSTORE_PATH KEYSTORE_PATH || true)"
+  store_password="$(first_non_empty_env LEOBOOK_STORE_PASSWORD STORE_PASSWORD || true)"
+  key_alias="$(first_non_empty_env LEOBOOK_KEY_ALIAS KEY_ALIAS || true)"
+  key_password="$(first_non_empty_env LEOBOOK_KEY_PASSWORD KEY_PASSWORD || true)"
 
-  if [ -z "$keystore_base64" ] && [ -z "$keystore_path" ]; then
-    echo "ERROR: Release signing is not configured."
-    echo "Add android/key.properties and the keystore file, or provide Codespaces secrets:"
-    echo "  LEOBOOK_KEYSTORE_BASE64"
-    echo "  LEOBOOK_STORE_PASSWORD"
-    echo "  LEOBOOK_KEY_ALIAS"
-    echo "  LEOBOOK_KEY_PASSWORD"
+  if [ -z "$keystore_path" ] || [ -z "$store_password" ] || [ -z "$key_alias" ] || [ -z "$key_password" ]; then
+    echo "ERROR: Signing credentials missing from leobookapp/.env"
     exit 1
   fi
 
-  if [ -z "$store_password" ] || [ -z "$key_alias" ] || [ -z "$key_password" ]; then
-    echo "ERROR: Missing keystore credentials."
-    echo "Expected LEOBOOK_STORE_PASSWORD, LEOBOOK_KEY_ALIAS, and LEOBOOK_KEY_PASSWORD."
-    exit 1
-  fi
+  [ ! -f "$keystore_path" ] && echo "ERROR: Keystore not found at $keystore_path" && exit 1
+
+  echo "✓ Signing configuration loaded from .env"
 
   TEMP_SIGNING_DIR="$(mktemp -d)"
   local temp_keystore="$TEMP_SIGNING_DIR/leobook-release.jks"
 
-  if [ -n "$keystore_base64" ]; then
-    printf '%s' "$keystore_base64" | base64 --decode > "$temp_keystore"
-  else
-    if [ ! -f "$keystore_path" ]; then
-      echo "ERROR: Keystore file not found at $keystore_path"
-      exit 1
-    fi
-    cp "$keystore_path" "$temp_keystore"
-  fi
+  cp "$keystore_path" "$temp_keystore"
 
   if [ -f "$KEY_PROPERTIES_FILE" ]; then
     KEY_PROPERTIES_BACKUP="$TEMP_SIGNING_DIR/key.properties.backup"
@@ -278,7 +269,7 @@ read_key_property() {
 
 resolve_keystore_path() {
   local store_file="$1"
-  if [[ "$store_file" =~ ^([A-Za-z]:[\\/]|/) ]]; then
+  if [[ "$store_file" =\~ ^([A-Za-z]:[\\/]|/) ]]; then
     printf '%s' "$store_file"
   else
     printf '%s/%s' "$ANDROID_DIR" "$store_file"
@@ -345,7 +336,7 @@ verify_release_apk() {
     exit 1
   fi
 
-  if [ "$(normalize_fingerprint "$actual_sha")" != "$(normalize_fingerprint "$expected_sha")" ]; then
+  if [ "$(normalize_fingerprint "\( actual_sha")" != " \)(normalize_fingerprint "$expected_sha")" ]; then
     echo "ERROR: APK signer does not match the configured release keystore."
     echo "Expected: $expected_sha"
     echo "Actual:   $actual_sha"
@@ -379,7 +370,7 @@ upload_file() {
   local content_type="$3"
   local response
   response="$(curl -s -w "\n%{http_code}" -X POST \
-    "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${dest_name}" \
+    "\( {SUPABASE_URL}/storage/v1/object/ \){BUCKET}/${dest_name}" \
     -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
     -H "Content-Type: ${content_type}" \
     -H "x-upsert: true" \
@@ -401,13 +392,13 @@ upload_file() {
 
 stage_split_apk() {
   local abi="$1"
-  local source_apk="$APK_OUTPUT/app-${abi}-release.apk"
+  local source_apk="\( APK_OUTPUT/app- \){abi}-release.apk"
   if [ ! -f "$source_apk" ]; then
     return 1
   fi
 
   local latest_name="LeoBook-latest-${abi}.apk"
-  local version_name="LeoBook-v${VERSION}-${abi}.apk"
+  local version_name="LeoBook-v\( {VERSION}- \){abi}.apk"
 
   cp "$source_apk" "$APK_OUTPUT/$latest_name"
   cp "$source_apk" "$APK_OUTPUT/$version_name"
@@ -429,7 +420,7 @@ load_env_file "$APP_DIR/.env"
 load_env_file "$SCRIPT_DIR/.env"
 
 KEYTOOL_BIN="$(resolve_java_tool keytool)"
-ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$(resolve_android_sdk_root || true)}"
+ANDROID_SDK_ROOT="\( {ANDROID_SDK_ROOT:- \)(resolve_android_sdk_root || true)}"
 APKSIGNER_BIN="$(resolve_android_tool apksigner)"
 AAPT_BIN="$(resolve_android_tool aapt)"
 prepare_release_signing
@@ -442,7 +433,7 @@ fi
 
 APK_NAME="LeoBook-v${VERSION}.apk"
 LATEST_NAME="LeoBook-latest.apk"
-PUBLIC_URL="${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${LATEST_NAME}"
+PUBLIC_URL="\( {SUPABASE_URL}/storage/v1/object/public/ \){BUCKET}/${LATEST_NAME}"
 
 if [ "${1:-}" != "--skip-build" ]; then
   echo "Building release APK..."
@@ -455,7 +446,7 @@ fi
 
 DEFAULT_SOURCE_APK=""
 for candidate_abi in "$DEFAULT_UPDATE_ABI" "armeabi-v7a" "x86_64"; do
-  candidate_apk="$APK_OUTPUT/app-${candidate_abi}-release.apk"
+  candidate_apk="\( APK_OUTPUT/app- \){candidate_abi}-release.apk"
   if [ -f "$candidate_apk" ]; then
     DEFAULT_SOURCE_APK="$candidate_apk"
     DEFAULT_SOURCE_ABI="$candidate_abi"
@@ -498,7 +489,7 @@ fi
 
 echo "Ensuring bucket '$BUCKET' exists..."
 bucket_check="$(curl -s -o /dev/null -w "%{http_code}" \
-  "${SUPABASE_URL}/storage/v1/bucket/${BUCKET}" \
+  "\( {SUPABASE_URL}/storage/v1/bucket/ \){BUCKET}" \
   -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")"
 
 if [ "$bucket_check" != "200" ]; then
@@ -507,7 +498,7 @@ if [ "$bucket_check" != "200" ]; then
     "${SUPABASE_URL}/storage/v1/bucket" \
     -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
     -H "Content-Type: application/json" \
-    -d "{\"id\": \"${BUCKET}\", \"name\": \"${BUCKET}\", \"public\": true}" >/dev/null
+    -d "{\"id\": \"\( {BUCKET}\", \"name\": \" \){BUCKET}\", \"public\": true}" >/dev/null
 fi
 
 echo "Uploading APKs to Supabase..."
@@ -516,26 +507,26 @@ upload_file "$APK_OUTPUT/$APK_NAME" "$APK_NAME" "application/vnd.android.package
 
 APK_URLS_JSON=""
 if stage_split_apk "arm64-v8a"; then
-  APK_URLS_JSON="${APK_URLS_JSON}    \"arm64-v8a\": \"$(public_url_for_name "LeoBook-latest-arm64-v8a.apk")\""
+  APK_URLS_JSON="\( {APK_URLS_JSON}    \"arm64-v8a\": \" \)(public_url_for_name "LeoBook-latest-arm64-v8a.apk")\""
 fi
 if stage_split_apk "armeabi-v7a"; then
   if [ -n "$APK_URLS_JSON" ]; then
     APK_URLS_JSON="${APK_URLS_JSON},\n"
   fi
-  APK_URLS_JSON="${APK_URLS_JSON}    \"armeabi-v7a\": \"$(public_url_for_name "LeoBook-latest-armeabi-v7a.apk")\""
+  APK_URLS_JSON="\( {APK_URLS_JSON}    \"armeabi-v7a\": \" \)(public_url_for_name "LeoBook-latest-armeabi-v7a.apk")\""
 fi
 if stage_split_apk "x86_64"; then
   if [ -n "$APK_URLS_JSON" ]; then
     APK_URLS_JSON="${APK_URLS_JSON},\n"
   fi
-  APK_URLS_JSON="${APK_URLS_JSON}    \"x86_64\": \"$(public_url_for_name "LeoBook-latest-x86_64.apk")\""
+  APK_URLS_JSON="\( {APK_URLS_JSON}    \"x86_64\": \" \)(public_url_for_name "LeoBook-latest-x86_64.apk")\""
 fi
 
 if [ "$DEFAULT_SOURCE_ABI" = "universal" ]; then
   if [ -n "$APK_URLS_JSON" ]; then
     APK_URLS_JSON="${APK_URLS_JSON},\n"
   fi
-  APK_URLS_JSON="${APK_URLS_JSON}    \"universal\": \"$(public_url_for_name "$LATEST_NAME")\""
+  APK_URLS_JSON="\( {APK_URLS_JSON}    \"universal\": \" \)(public_url_for_name "$LATEST_NAME")\""
 fi
 
 METADATA_FILE="$APK_OUTPUT/metadata.json"
@@ -557,4 +548,4 @@ upload_file "$METADATA_FILE" "metadata.json" "application/json"
 echo "Deploy complete"
 echo "Version:  $VERSION"
 echo "APK URL:  $PUBLIC_URL"
-echo "Metadata: ${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/metadata.json"
+echo "Metadata: \( {SUPABASE_URL}/storage/v1/object/public/ \){BUCKET}/metadata.json"

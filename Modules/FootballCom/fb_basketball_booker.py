@@ -36,7 +36,7 @@ from Core.Utils.constants import (
 from Core.Utils.utils import log_error_state
 from Core.System.lifecycle import log_state
 from Core.Intelligence.aigo_suite import AIGOSuite
-from .fb_session import launch_browser_with_retry
+from .fb_session import launch_browser_with_retry, get_user_session_dir, load_user_fingerprint
 from .navigator import load_or_create_session, extract_balance, hide_overlays
 from .fb_basketball_odds import (
     extract_basketball_leagues_fb,
@@ -78,14 +78,16 @@ async def _create_bb_session_no_login(playwright: Playwright):
     return context, page
 
 
-async def _create_bb_session(playwright: Playwright):
-    """Full authenticated session for bet placement."""
-    from pathlib import Path
+async def _create_bb_session(playwright: Playwright, user_id: Optional[str] = None):
+    """Full authenticated session for bet placement.
 
-    user_data_dir = Path("Data/Auth/ChromeData_v3").absolute()
+    Uses per-user Chrome profile and fingerprint when user_id is supplied.
+    """
+    user_data_dir = get_user_session_dir(user_id).absolute()
     user_data_dir.mkdir(parents=True, exist_ok=True)
-    context = await launch_browser_with_retry(playwright, user_data_dir)
-    _, page = await load_or_create_session(context)
+    fingerprint = load_user_fingerprint(user_id) if user_id else None
+    context = await launch_browser_with_retry(playwright, user_data_dir, fingerprint=fingerprint)
+    _, page = await load_or_create_session(context, user_id)
     current_balance = await extract_balance(page)
     from Core.Utils.constants import CURRENCY_SYMBOL
     print(f"  [BB Balance] Current: {CURRENCY_SYMBOL}{current_balance:.2f}")

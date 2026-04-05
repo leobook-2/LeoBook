@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:leobookapp/core/constants/app_colors.dart';
-import 'package:leobookapp/core/constants/stairway_table.dart';
 import 'package:leobookapp/core/widgets/leo_loading_indicator.dart';
+import 'package:leobookapp/data/models/stairway_model.dart';
 import 'package:leobookapp/data/models/rule_config_model.dart';
 import 'package:leobookapp/data/models/user_model.dart';
 import 'package:leobookapp/data/services/leo_service.dart';
@@ -34,6 +34,7 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
   List<RuleConfigModel> _engines = [];
   RuleConfigModel? _currentConfig;
   UserStairwaySnapshot? _stairway;
+  UserFbBalanceSnapshot? _fbBalance;
   List<Map<String, dynamic>> _jobRows = [];
   String? _selectedRlEngineId;
 
@@ -48,7 +49,12 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
     try {
       _engines = await _enginesService.loadAll();
       _currentConfig = await _enginesService.getDefaultEngine();
-      _stairway = await _snapshots.fetchStairway();
+      final results = await Future.wait([
+        _snapshots.fetchStairway(),
+        _snapshots.fetchFbBalance(),
+      ]);
+      _stairway = results[0] as UserStairwaySnapshot?;
+      _fbBalance = results[1] as UserFbBalanceSnapshot?;
       _jobRows = await _rlJobs.recentJobs(limit: 15);
       _selectedRlEngineId = _currentConfig?.id;
       if (!kIsWeb && _currentConfig != null) {
@@ -195,6 +201,8 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
                                   const SizedBox(height: 24),
                                 ],
                                 _stairwayCard(),
+                                const SizedBox(height: 12),
+                                _fbBalanceCard(),
                                 const SizedBox(height: 20),
                                 _enginesSection(user),
                                 const SizedBox(height: 20),
@@ -272,10 +280,29 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
     );
   }
 
+  // 4x per step over 7 steps: totalMultiplier = 4^7 = 16384
+  static const double _stairSeed = 1000;
+  static const double _stairMultiplier = 16384; // 4^7
+
+  static String _fmtAmount(double v) {
+    if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(0)}K';
+    return v.toStringAsFixed(0);
+  }
+
   Widget _stairwayCard() {
     final s = _stairway;
     final step = s?.currentStep ?? 1;
-    final info = stairwayStepInfo(step);
+    final project = StairwayProject(
+      seedAmount: _stairSeed,
+      targetMultiplier: _stairMultiplier,
+      stepCount: 7,
+      currentStep: step,
+      cycleCount: s?.cycleCount ?? 0,
+      lastResult: s?.lastResult,
+    );
+    final active = project.activeStep;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -287,9 +314,11 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header ──────────────────────────────────────────────
           Row(
             children: [
-              Icon(Icons.stairs_rounded, color: AppColors.primary.withValues(alpha: 0.9)),
+              Icon(Icons.stairs_rounded,
+                  color: AppColors.primary.withValues(alpha: 0.9)),
               const SizedBox(width: 8),
               const Text(
                 'PROJECT STAIRWAY',
@@ -300,27 +329,153 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
                   letterSpacing: 1.5,
                 ),
               ),
+              const Spacer(),
+              Text(
+                project.progressLabel,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textGrey,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            s == null
-                ? 'No stairway sync yet. Run Leo with --user-id after placing bets.'
-                : 'Step $step / 7 · Stake ₦${info['stake']} · Target odds ${info['odds_target']}',
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
+
+          if (s == null) ...[
+            const Text(
+              'No stairway sync yet. Run Leo with --user-id after placing bets.',
+              style: TextStyle(fontSize: 13, color: AppColors.textGrey),
             ),
-          ),
-          if (s != null) ...[
-            const SizedBox(height: 8),
+          ] else ...[
+            // ── Progress bar ─────────────────────────────────────
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: project.progressPct,
+                backgroundColor: Colors.white10,
+                color: AppColors.primary,
+                minHeight: 6,
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // ── Current step seed → target ────────────────────────
+            Row(
+              children: [
+                Text(
+                  '₦${_fmtAmount(active.seedAmount)}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Icon(Icons.arrow_forward,
+                      size: 16, color: AppColors.textGrey),
+                ),
+                Text(
+                  '₦${_fmtAmount(active.targetAmount)}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.success,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'Cycles: ${s.cycleCount}',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textGrey),
+                ),
+              ],
+            ),
+
+            // ── Last result + week stats ──────────────────────────
+            const SizedBox(height: 6),
             Text(
-              'Cycles: ${s.cycleCount} · This week: ${s.weekCyclesCompleted} completed'
+              'This week: ${s.weekCyclesCompleted} completed'
               '${s.lastResult != null ? ' · Last: ${s.lastResult}' : ''}',
               style: const TextStyle(fontSize: 12, color: AppColors.textGrey),
             ),
+            const SizedBox(height: 14),
+
+            // ── Step dots ────────────────────────────────────────
+            Row(
+              children: project.steps.map((st) {
+                final Color col = st.isCompleted
+                    ? AppColors.success
+                    : st.isActive
+                        ? AppColors.primary
+                        : Colors.white10;
+                return Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    height: 5,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(3),
+                      color: col,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _fbBalanceCard() {
+    final bal = _fbBalance;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.account_balance_wallet_outlined,
+              color: AppColors.primary.withValues(alpha: 0.9), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: bal == null
+                ? const Text(
+                    'Football.com balance not synced yet',
+                    style: TextStyle(fontSize: 13, color: AppColors.textGrey),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${bal.currency} ${bal.balance.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (bal.capturedAt != null)
+                        Text(
+                          'Updated: ${bal.capturedAt!.substring(0, 16).replaceFirst('T', ' ')}',
+                          style: const TextStyle(fontSize: 11, color: AppColors.textGrey),
+                        ),
+                    ],
+                  ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, size: 18),
+            tooltip: 'Refresh balance from Supabase',
+            onPressed: () async {
+              final fresh = await _snapshots.fetchFbBalance();
+              if (mounted) setState(() => _fbBalance = fresh);
+            },
+          ),
         ],
       ),
     );
