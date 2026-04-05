@@ -99,19 +99,20 @@ async def check_withdrawal_approval() -> bool:
     return False
 
 @AIGOSuite.aigo_retry(max_retries=2, delay=5.0)
-async def execute_withdrawal(amount: float):
-    """Executes the withdrawal using an isolated browser context (v2.8)."""
+async def execute_withdrawal(amount: float, user_id: str = None):
+    """Executes the withdrawal using an isolated, per-user browser context (v2.9)."""
     print(f"   [Execute] Starting approved withdrawal for {CURRENCY_SYMBOL}{amount:.2f}...")
     from playwright.async_api import async_playwright
-    
+    from Modules.FootballCom.fb_session import (
+        get_user_session_dir, load_user_fingerprint, launch_browser_with_retry,
+    )
+
     async with async_playwright() as p:
-        user_data_dir = Path("Data/Auth/ChromeData_v3").absolute()
+        user_data_dir = get_user_session_dir(user_id).absolute()
+        user_data_dir.mkdir(parents=True, exist_ok=True)
+        fingerprint = load_user_fingerprint(user_id) if user_id else None
         try:
-            context = await p.chromium.launch_persistent_context(
-                user_data_dir=str(user_data_dir),
-                headless=True,
-                viewport={'width': 375, 'height': 612}
-            )
+            context = await launch_browser_with_retry(p, user_data_dir, fingerprint=fingerprint)
             page = await context.new_page()
             
             from Modules.FootballCom.booker.withdrawal import check_and_perform_withdrawal

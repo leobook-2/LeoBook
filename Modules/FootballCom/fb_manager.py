@@ -31,7 +31,7 @@ from Core.Utils.utils import log_error_state
 from Core.System.lifecycle import log_state
 from Core.Intelligence.aigo_suite import AIGOSuite
 from .odds_extractor import OddsResult
-from .fb_session import launch_browser_with_retry
+from .fb_session import launch_browser_with_retry, get_user_session_dir, load_user_fingerprint
 from .navigator import load_or_create_session, extract_balance, hide_overlays
 from .fb_workers import _odds_worker, _league_worker
 from .fb_phase0 import run_league_calendar_fixtures_sync, _load_fb_league_lookup
@@ -69,13 +69,18 @@ def _save_checkpoint(batch_idx: int) -> None:
 
 # ── Shared session helpers ──────────────────────────────────────────────────
 
-async def _create_session(playwright: Playwright):
-    """Full session setup: launch browser, login, extract balance. For bet placement."""
-    user_data_dir = Path("Data/Auth/ChromeData_v3").absolute()
-    user_data_dir.mkdir(parents=True, exist_ok=True)
+async def _create_session(playwright: Playwright, user_id: Optional[str] = None):
+    """Full session setup: launch browser, login, extract balance. For bet placement.
 
-    context = await launch_browser_with_retry(playwright, user_data_dir)
-    _, page = await load_or_create_session(context)
+    When user_id is supplied, uses the isolated per-user Chrome profile and any
+    registered fingerprint overrides (proxy, UA) from user_credentials.
+    """
+    user_data_dir = get_user_session_dir(user_id).absolute()
+    user_data_dir.mkdir(parents=True, exist_ok=True)
+    fingerprint = load_user_fingerprint(user_id) if user_id else None
+
+    context = await launch_browser_with_retry(playwright, user_data_dir, fingerprint=fingerprint)
+    _, page = await load_or_create_session(context, user_id)
 
     current_balance = await extract_balance(page)
     from Core.Utils.constants import CURRENCY_SYMBOL

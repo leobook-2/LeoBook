@@ -207,6 +207,15 @@ SUPABASE_SCHEMA = {
             finished_at TIMESTAMPTZ,
             error TEXT
         );""",
+    'user_device_fingerprint': """
+        CREATE TABLE IF NOT EXISTS public.user_device_fingerprint (
+            user_id TEXT PRIMARY KEY,
+            proxy_server TEXT,
+            user_agent TEXT,
+            viewport_w INTEGER,
+            viewport_h INTEGER,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );""",
 }
 
 # ── Derived: allowed columns per remote table (parsed from SUPABASE_SCHEMA DDL) ──

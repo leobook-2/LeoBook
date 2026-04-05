@@ -227,17 +227,19 @@ async def run_utility(args):
             print("  [Error] --fb-balance requires --user-id <UUID> (stored Football.com credentials).")
             return
         print("\n  --- LEO: Football.com balance (logged session) ---")
-        from pathlib import Path
         from playwright.async_api import async_playwright
-        from Modules.FootballCom.fb_session import launch_browser_with_retry
+        from Modules.FootballCom.fb_session import (
+            launch_browser_with_retry, get_user_session_dir, load_user_fingerprint,
+        )
         from Modules.FootballCom.navigator import load_or_create_session
 
-        user_data_dir = Path("Data/Auth/ChromeData_v3").absolute()
+        user_data_dir = get_user_session_dir(uid).absolute()
         user_data_dir.mkdir(parents=True, exist_ok=True)
+        fingerprint = load_user_fingerprint(uid)
 
         async def _bal():
             async with async_playwright() as p:
-                context = await launch_browser_with_retry(p, user_data_dir)
+                context = await launch_browser_with_retry(p, user_data_dir, fingerprint=fingerprint)
                 try:
                     await load_or_create_session(context, uid)
                 finally:
